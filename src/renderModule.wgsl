@@ -3,6 +3,9 @@ struct VertexOutput {
   @location(0) uv: vec2f,
 };
 
+@group(0) @binding(0) var densitySampler: sampler;
+@group(0) @binding(1) var densityTexture: texture_2d<f32>;
+
 @vertex fn vs(
   @builtin(vertex_index) vertexIndex : u32
 ) -> VertexOutput {
@@ -34,5 +37,5 @@ struct VertexOutput {
 }
 
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4f {
-  return vec4f(input.uv, 0.0, 1.0);
+  return textureSample(densityTexture, densitySampler, input.uv);
 }

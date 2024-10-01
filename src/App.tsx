@@ -19,7 +19,9 @@ function App() {
       if (!adapter) {
         throw new Error("requestAdapter failed");
       }
-      const device = await adapter.requestDevice();
+      const device = await adapter.requestDevice({
+        requiredFeatures: ["float32-filterable"],
+      });
       if (!device) {
         throw new Error("requestDevice failed");
       }
