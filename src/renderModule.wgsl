@@ -1,5 +1,6 @@
 struct Uniforms {
-  N: i32,
+  N: u32,
+  time: f32,
 };
 
 struct VertexOutput {
@@ -41,8 +42,8 @@ struct VertexOutput {
 }
 
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4f {
-  let x = i32(floor(input.uv.x * f32(uniforms.N)));
-  let y = i32(floor(input.uv.y * f32(uniforms.N)));
+  let x = u32(floor(input.uv.x * f32(uniforms.N)));
+  let y = u32(floor(input.uv.y * f32(uniforms.N)));
   let index = y * uniforms.N + x;
   
   return vec4(densityBuffer[index], 0, 0, 1);

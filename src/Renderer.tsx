@@ -1,10 +1,12 @@
 import { useCallback, useMemo } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
-import { arrayOf, f32, i32, struct } from "typegpu/data";
+import computeModuleCode from "./computeModule.wgsl?raw";
+import { arrayOf, f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
 
 const N = 256;
+const workgroupSize = 64;
 
 export function Renderer({
   context,
@@ -34,7 +36,8 @@ export function Renderer({
   const Uniforms = useMemo(
     () =>
       struct({
-        N: i32,
+        N: u32,
+        time: f32,
       }),
     []
   );
@@ -44,6 +47,7 @@ export function Renderer({
       tgpu
         .createBuffer(Uniforms, {
           N,
+          time: 0,
         })
         .$device(device)
         .$usage(tgpu.Uniform),
@@ -71,6 +75,40 @@ export function Renderer({
     buffer.write(data);
     return buffer;
   }, [device]);
+
+  const computeModule = useMemo(
+    () =>
+      device.createShaderModule({
+        label: "Compute module",
+        code: computeModuleCode,
+      }),
+    [device]
+  );
+
+  const junkPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "fillWithJunk pipeline",
+        layout: "auto",
+        compute: {
+          module: computeModule,
+          entryPoint: "fillWithJunk",
+        },
+      }),
+    [computeModule, device]
+  );
+
+  const junkBindGroup = useMemo(
+    () =>
+      device.createBindGroup({
+        layout: junkPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: uniformsBuffer },
+          { binding: 1, resource: densityBuffer },
+        ],
+      }),
+    [densityBuffer, device, junkPipeline, uniformsBuffer]
+  );
 
   const renderModule = useMemo(
     () =>
@@ -113,7 +151,7 @@ export function Renderer({
     [context]
   );
 
-  const bindGroup = useMemo(
+  const renderBindGroup = useMemo(
     () =>
       device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
@@ -135,14 +173,31 @@ export function Renderer({
         label: "Field display encoder",
       });
 
+      uniformsBuffer.write({ N, time: performance.now() });
+
+      const fillWithJunkPass = encoder.beginComputePass();
+      fillWithJunkPass.setPipeline(junkPipeline);
+      fillWithJunkPass.setBindGroup(0, junkBindGroup);
+      fillWithJunkPass.dispatchWorkgroups(Math.ceil((N * N) / workgroupSize));
+      fillWithJunkPass.end();
+
       const renderPass = encoder.beginRenderPass(renderPassDescriptor);
       renderPass.setPipeline(renderPipeline);
-      renderPass.setBindGroup(0, bindGroup);
+      renderPass.setBindGroup(0, renderBindGroup);
       renderPass.draw(6);
       renderPass.end();
 
       device.queue.submit([encoder.finish()]);
-    }, [bindGroup, context, device, renderPassDescriptor, renderPipeline])
+    }, [
+      context,
+      device,
+      junkBindGroup,
+      junkPipeline,
+      renderBindGroup,
+      renderPassDescriptor,
+      renderPipeline,
+      uniformsBuffer,
+    ])
   );
 
   return null;
