@@ -14,6 +14,9 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      typegpu:
+        specifier: ^0.1.3
+        version: 0.1.3
       webgpu-utils:
         specifier: ^1.9.3
         version: 1.9.3
@@ -1024,6 +1027,13 @@ packages:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
 
+  typed-binary@4.1.0:
+    resolution: {integrity: sha512-QQgqsUNs3zCQZOzv5aUV/HrdWGMpA8gW8oxhhML+yD7QzvvtFGGicoPtliKx/+8nZww55USLiubcw7hEw0sQTA==}
+
+  typegpu@0.1.3:
+    resolution: {integrity: sha512-QIsXU6Rnb4+xcaKHNxZ5syJBODC48WDLCXEZXybawH2Wixy/YrDDIbl3GlsN3WIA2WwhhK/FjPb2NoAiC5Y6UA==}
+    engines: {node: '>=12.20.0'}
+
   typescript-eslint@8.7.0:
     resolution: {integrity: sha512-nEHbEYJyHwsuf7c3V3RS7Saq+1+la3i0ieR3qP0yjqWSzVmh8Drp47uOl9LjbPANac4S7EFSqvcYIKXUUwIfIQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -2027,6 +2037,12 @@ snapshots:
   type-check@0.4.0:
     dependencies:
       prelude-ls: 1.2.1
+
+  typed-binary@4.1.0: {}
+
+  typegpu@0.1.3:
+    dependencies:
+      typed-binary: 4.1.0
 
   typescript-eslint@8.7.0(eslint@9.11.1)(typescript@5.6.2):
     dependencies:

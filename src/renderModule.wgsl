@@ -1,10 +1,14 @@
+struct Uniforms {
+  N: i32,
+};
+
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
 };
 
-@group(0) @binding(0) var densitySampler: sampler;
-@group(0) @binding(1) var densityTexture: texture_2d<f32>;
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> densityBuffer: array<f32>;
 
 @vertex fn vs(
   @builtin(vertex_index) vertexIndex : u32
@@ -37,5 +41,9 @@ struct VertexOutput {
 }
 
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4f {
-  return textureSample(densityTexture, densitySampler, input.uv);
+  let x = i32(floor(input.uv.x * f32(uniforms.N)));
+  let y = i32(floor(input.uv.y * f32(uniforms.N)));
+  let index = y * uniforms.N + x;
+  
+  return vec4(densityBuffer[index], 0, 0, 1);
 }

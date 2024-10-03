@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
+import { arrayOf, f32, i32, struct } from "typegpu/data";
+import tgpu from "typegpu";
 
 const N = 256;
 
@@ -26,20 +28,36 @@ export function Renderer({
   1. full screen quad
   2. uvs
   3. make a storage buffer & fill it with junk
-  4. copy buffer to a texture
-  5. sample the texture in shader
+  4. draw from the storage buffer
   */
 
+  const Uniforms = useMemo(
+    () =>
+      struct({
+        N: i32,
+      }),
+    []
+  );
+
+  const uniformsBuffer = useMemo(
+    () =>
+      tgpu
+        .createBuffer(Uniforms, {
+          N,
+        })
+        .$device(device)
+        .$usage(tgpu.Uniform),
+    [Uniforms, device]
+  );
+
   const densityBuffer = useMemo(() => {
-    const buffer = device.createBuffer({
-      label: "Density buffer",
-      usage:
-        GPUBufferUsage.COPY_SRC |
-        GPUBufferUsage.COPY_DST |
-        GPUBufferUsage.STORAGE,
-      size: 4 * N * N,
-    });
-    const data = new Float32Array(N * N);
+    const buffer = tgpu
+      .createBuffer(arrayOf(f32, N * N))
+      .$device(device)
+      .$name("Density buffer")
+      .$usage(tgpu.Storage);
+
+    const data = Array.from<number>({ length: N * N });
     for (let x = 0; x < N; ++x) {
       for (let y = 0; y < N; ++y) {
         const dx = x - N / 2;
@@ -50,21 +68,9 @@ export function Renderer({
         }
       }
     }
-    device.queue.writeBuffer(buffer, 0, data);
+    buffer.write(data);
     return buffer;
   }, [device]);
-
-  const densityTexture = useMemo(
-    () =>
-      device.createTexture({
-        label: "Density display texture",
-        format: "r32float",
-
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-        size: [N, N],
-      }),
-    [device]
-  );
 
   const renderModule = useMemo(
     () =>
@@ -107,18 +113,16 @@ export function Renderer({
     [context]
   );
 
-  const densitySampler = useMemo(() => device.createSampler(), [device]);
-
   const bindGroup = useMemo(
     () =>
       device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: densitySampler },
-          { binding: 1, resource: densityTexture.createView() },
+          { binding: 0, resource: uniformsBuffer },
+          { binding: 1, resource: densityBuffer },
         ],
       }),
-    [densitySampler, densityTexture, device, renderPipeline]
+    [densityBuffer, device, renderPipeline, uniformsBuffer]
   );
 
   useAnimationFrame(
@@ -131,12 +135,6 @@ export function Renderer({
         label: "Field display encoder",
       });
 
-      encoder.copyBufferToTexture(
-        { buffer: densityBuffer, bytesPerRow: 4 * N },
-        { texture: densityTexture },
-        [N, N]
-      );
-
       const renderPass = encoder.beginRenderPass(renderPassDescriptor);
       renderPass.setPipeline(renderPipeline);
       renderPass.setBindGroup(0, bindGroup);
@@ -144,15 +142,7 @@ export function Renderer({
       renderPass.end();
 
       device.queue.submit([encoder.finish()]);
-    }, [
-      bindGroup,
-      context,
-      densityBuffer,
-      densityTexture,
-      device,
-      renderPassDescriptor,
-      renderPipeline,
-    ])
+    }, [bindGroup, context, device, renderPassDescriptor, renderPipeline])
   );
 
   return null;
