@@ -2,11 +2,11 @@ import { useCallback, useMemo } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
 import computeModuleCode from "./computeModule.wgsl?raw";
-import { arrayOf, f32, u32, struct } from "typegpu/data";
+import { f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
 
 const N = 256;
-const workgroupSize = 64;
+const workgroupDim = 16;
 
 export function Renderer({
   context,
@@ -54,14 +54,19 @@ export function Renderer({
     [Uniforms, device]
   );
 
-  const densityBuffer = useMemo(() => {
-    const buffer = tgpu
-      .createBuffer(arrayOf(f32, N * N))
-      .$device(device)
-      .$name("Density buffer")
-      .$usage(tgpu.Storage);
+  const densityTexture = useMemo(() => {
+    const texture = device.createTexture({
+      label: "density storage texture",
+      format: "r32float",
+      size: [N, N],
+      usage:
+        GPUTextureUsage.STORAGE_BINDING |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_SRC |
+        GPUTextureUsage.COPY_DST,
+    });
 
-    const data = Array.from<number>({ length: N * N });
+    const data = new Float32Array(N * N);
     for (let x = 0; x < N; ++x) {
       for (let y = 0; y < N; ++y) {
         const dx = x - N / 2;
@@ -72,9 +77,28 @@ export function Renderer({
         }
       }
     }
-    buffer.write(data);
-    return buffer;
+
+    device.queue.writeTexture(
+      { texture },
+      data,
+      {
+        bytesPerRow: data.BYTES_PER_ELEMENT * N,
+        rowsPerImage: N,
+      },
+      [N, N]
+    );
+
+    return texture;
   }, [device]);
+
+  const densitySampler = useMemo(
+    () =>
+      device.createSampler({
+        minFilter: "linear",
+        magFilter: "linear",
+      }),
+    [device]
+  );
 
   const computeModule = useMemo(
     () =>
@@ -88,7 +112,7 @@ export function Renderer({
   const junkPipeline = useMemo(
     () =>
       device.createComputePipeline({
-        label: "fillWithJunk pipeline",
+        label: "junk pipeline",
         layout: "auto",
         compute: {
           module: computeModule,
@@ -104,10 +128,10 @@ export function Renderer({
         layout: junkPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: uniformsBuffer },
-          { binding: 1, resource: densityBuffer },
+          { binding: 1, resource: densityTexture.createView() },
         ],
       }),
-    [densityBuffer, device, junkPipeline, uniformsBuffer]
+    [densityTexture, device, junkPipeline, uniformsBuffer]
   );
 
   const renderModule = useMemo(
@@ -157,10 +181,11 @@ export function Renderer({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: uniformsBuffer },
-          { binding: 1, resource: densityBuffer },
+          { binding: 1, resource: densityTexture.createView() },
+          { binding: 2, resource: densitySampler },
         ],
       }),
-    [densityBuffer, device, renderPipeline, uniformsBuffer]
+    [densitySampler, densityTexture, device, renderPipeline, uniformsBuffer]
   );
 
   useAnimationFrame(
@@ -175,11 +200,14 @@ export function Renderer({
 
       uniformsBuffer.write({ N, time: performance.now() });
 
-      const fillWithJunkPass = encoder.beginComputePass();
-      fillWithJunkPass.setPipeline(junkPipeline);
-      fillWithJunkPass.setBindGroup(0, junkBindGroup);
-      fillWithJunkPass.dispatchWorkgroups(Math.ceil((N * N) / workgroupSize));
-      fillWithJunkPass.end();
+      const junkPass = encoder.beginComputePass();
+      junkPass.setPipeline(junkPipeline);
+      junkPass.setBindGroup(0, junkBindGroup);
+      junkPass.dispatchWorkgroups(
+        Math.ceil(N / workgroupDim),
+        Math.ceil(N / workgroupDim)
+      );
+      junkPass.end();
 
       const renderPass = encoder.beginRenderPass(renderPassDescriptor);
       renderPass.setPipeline(renderPipeline);
