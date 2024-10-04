@@ -198,7 +198,7 @@ export function Renderer({
         label: "Field display encoder",
       });
 
-      uniformsBuffer.write({ N, time: performance.now() });
+      uniformsBuffer.write({ N, time: performance.now() / 1000 });
 
       const junkPass = encoder.beginComputePass();
       junkPass.setPipeline(junkPipeline);
