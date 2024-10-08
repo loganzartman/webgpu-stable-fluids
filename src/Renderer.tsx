@@ -4,9 +4,10 @@ import renderModuleCode from "./renderModule.wgsl?raw";
 import diffuseModuleCode from "./diffuseModule.wgsl?raw";
 import { f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
+import { ReadWritePrevTex } from "./ReadWritePrevTex";
 
 const N = 256;
-const workgroupDim = 16;
+const workgroupDim = 8;
 
 export function Renderer({
   context,
@@ -25,15 +26,7 @@ export function Renderer({
     return format;
   }, [context, device]);
 
-  // the plan
-  /*
-  1. full screen quad
-  2. uvs
-  3. make a storage buffer & fill it with junk
-  4. draw from the storage buffer
-  */
-
-  let [densityReadTex, densityWriteTex, densityPrevTex] = useMemo(() => {
+  const densityRwp = useMemo(() => {
     const data = new Float32Array(N * N);
     for (let x = 0; x < N; ++x) {
       for (let y = 0; y < N; ++y) {
@@ -46,9 +39,10 @@ export function Renderer({
       }
     }
 
-    return Array.from({ length: 3 }).map((_, i) => {
-      const texture = device.createTexture({
-        label: `density texture ${i}`,
+    return new ReadWritePrevTex({
+      device,
+      descriptor: {
+        label: `density texture`,
         format: "r32float",
         size: [N, N],
         usage:
@@ -56,18 +50,18 @@ export function Renderer({
           GPUTextureUsage.TEXTURE_BINDING |
           GPUTextureUsage.COPY_SRC |
           GPUTextureUsage.COPY_DST,
-      });
-
-      device.queue.writeTexture(
-        { texture },
-        data,
-        {
-          bytesPerRow: data.BYTES_PER_ELEMENT * N,
-          rowsPerImage: N,
-        },
-        [N, N]
-      );
-      return texture;
+      },
+      writeInitialData(texture) {
+        device.queue.writeTexture(
+          { texture },
+          data,
+          {
+            bytesPerRow: data.BYTES_PER_ELEMENT * N,
+            rowsPerImage: N,
+          },
+          [N, N]
+        );
+      },
     });
   }, [device]);
 
@@ -123,20 +117,32 @@ export function Renderer({
   );
 
   const diffuse = useCallback(
-    ({ encoder, iters }: { encoder: GPUCommandEncoder; iters: number }) => {
+    ({
+      encoder,
+      target,
+      diff,
+      dt,
+      iters,
+    }: {
+      encoder: GPUCommandEncoder;
+      target: ReadWritePrevTex;
+      diff: number;
+      dt: number;
+      iters: number;
+    }) => {
       diffuseUniformsBuffer.write({
         N,
-        diff: 0.01,
-        dt: 0.01,
+        diff,
+        dt,
       });
       for (let i = 0; i < iters; ++i) {
         const bindGroup = device.createBindGroup({
           layout: diffuseStepPipeline.getBindGroupLayout(0),
           entries: [
             { binding: 0, resource: diffuseUniformsBuffer },
-            { binding: 1, resource: densityReadTex.createView() },
-            { binding: 2, resource: densityWriteTex.createView() },
-            { binding: 3, resource: densityPrevTex.createView() },
+            { binding: 1, resource: target.readTex.createView() },
+            { binding: 2, resource: target.writeTex.createView() },
+            { binding: 3, resource: target.prevTex.createView() },
           ],
         });
         const pass = encoder.beginComputePass();
@@ -147,18 +153,11 @@ export function Renderer({
           Math.ceil(N / workgroupDim)
         );
         pass.end();
-        [densityReadTex, densityWriteTex] = [densityWriteTex, densityReadTex];
+        target.swap();
       }
-      [densityPrevTex, densityWriteTex] = [densityWriteTex, densityPrevTex];
+      target.commit();
     },
-    [
-      densityPrevTex,
-      densityReadTex,
-      densityWriteTex,
-      device,
-      diffuseStepPipeline,
-      diffuseUniformsBuffer,
-    ]
+    [device, diffuseStepPipeline, diffuseUniformsBuffer]
   );
 
   const renderModule = useMemo(
@@ -204,6 +203,7 @@ export function Renderer({
 
   useAnimationFrame(
     useCallback(() => {
+      const dt = 0.01;
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -212,13 +212,19 @@ export function Renderer({
         label: "Field display encoder",
       });
 
-      diffuse({ encoder, iters: 10 });
+      diffuse({
+        encoder,
+        target: densityRwp,
+        diff: 0.01,
+        dt,
+        iters: 10,
+      });
 
       const renderBindGroup = device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: diffuseUniformsBuffer },
-          { binding: 1, resource: densityReadTex.createView() },
+          { binding: 1, resource: densityRwp.readTex.createView() },
           { binding: 2, resource: densitySampler },
         ],
       });
@@ -232,7 +238,7 @@ export function Renderer({
       device.queue.submit([encoder.finish()]);
     }, [
       context,
-      densityReadTex,
+      densityRwp,
       densitySampler,
       device,
       diffuse,
