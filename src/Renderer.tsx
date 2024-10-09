@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
 import diffuseModuleCode from "./diffuseModule.wgsl?raw";
+import advectModuleCode from "./advectModule.wgsl?raw";
 import { f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
 import { ReadWritePrevTex } from "./ReadWritePrevTex";
@@ -65,6 +66,41 @@ export function Renderer({
     });
   }, [device]);
 
+  const velocityRwp = useMemo(() => {
+    const data = new Float32Array(N * N * 2);
+    for (let x = 0; x < N; ++x) {
+      for (let y = 0; y < N; ++y) {
+        data[(y * N + x) * 2] = 1;
+        data[(y * N + x) * 2 + 1] = 0.1;
+      }
+    }
+
+    return new ReadWritePrevTex({
+      device,
+      descriptor: {
+        label: "velocity texture",
+        format: "rg32float",
+        size: [N, N],
+        usage:
+          GPUTextureUsage.STORAGE_BINDING |
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_SRC |
+          GPUTextureUsage.COPY_DST,
+      },
+      writeInitialData(texture) {
+        device.queue.writeTexture(
+          { texture },
+          data,
+          {
+            bytesPerRow: data.BYTES_PER_ELEMENT * N * 2,
+            rowsPerImage: N,
+          },
+          [N, N]
+        );
+      },
+    });
+  }, [device]);
+
   const densitySampler = useMemo(
     () =>
       device.createSampler({
@@ -79,6 +115,15 @@ export function Renderer({
       device.createShaderModule({
         label: "diffuse module",
         code: diffuseModuleCode,
+      }),
+    [device]
+  );
+
+  const advectModule = useMemo(
+    () =>
+      device.createShaderModule({
+        label: "advect module",
+        code: advectModuleCode,
       }),
     [device]
   );
@@ -103,6 +148,24 @@ export function Renderer({
     [device]
   );
 
+  const advectUniformsBuffer = useMemo(
+    () =>
+      tgpu
+        .createBuffer(
+          struct({
+            N: u32,
+            dt: f32,
+          }),
+          {
+            N,
+            dt: 0,
+          }
+        )
+        .$device(device)
+        .$usage(tgpu.Uniform),
+    [device]
+  );
+
   const diffuseStepPipeline = useMemo(
     () =>
       device.createComputePipeline({
@@ -114,6 +177,19 @@ export function Renderer({
         },
       }),
     [device, diffuseModule]
+  );
+
+  const advectPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "advect pipeline",
+        layout: "auto",
+        compute: {
+          module: advectModule,
+          entryPoint: "advect",
+        },
+      }),
+    [advectModule, device]
   );
 
   const diffuse = useCallback(
@@ -135,6 +211,7 @@ export function Renderer({
         diff,
         dt,
       });
+
       for (let i = 0; i < iters; ++i) {
         const bindGroup = device.createBindGroup({
           layout: diffuseStepPipeline.getBindGroupLayout(0),
@@ -145,6 +222,7 @@ export function Renderer({
             { binding: 3, resource: target.prevTex.createView() },
           ],
         });
+
         const pass = encoder.beginComputePass();
         pass.setPipeline(diffuseStepPipeline);
         pass.setBindGroup(0, bindGroup);
@@ -153,11 +231,53 @@ export function Renderer({
           Math.ceil(N / workgroupDim)
         );
         pass.end();
+
         target.swap();
       }
-      target.commit();
     },
     [device, diffuseStepPipeline, diffuseUniformsBuffer]
+  );
+
+  const advect = useCallback(
+    ({
+      encoder,
+      target,
+      targetSampler,
+      dt,
+    }: {
+      encoder: GPUCommandEncoder;
+      target: ReadWritePrevTex;
+      targetSampler: GPUSampler;
+      dt: number;
+    }) => {
+      advectUniformsBuffer.write({
+        N,
+        dt,
+      });
+
+      const bindGroup = device.createBindGroup({
+        layout: advectPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: advectUniformsBuffer },
+          { binding: 1, resource: target.readTex.createView() },
+          { binding: 2, resource: targetSampler },
+          { binding: 3, resource: target.writeTex.createView() },
+          { binding: 4, resource: velocityRwp.readTex.createView() },
+        ],
+      });
+
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(advectPipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(
+        Math.ceil(N / workgroupDim),
+        Math.ceil(N / workgroupDim)
+      );
+      pass.end();
+
+      target.swap();
+    },
+    [advectPipeline, advectUniformsBuffer, device, velocityRwp.readTex]
   );
 
   const renderModule = useMemo(
@@ -203,7 +323,7 @@ export function Renderer({
 
   useAnimationFrame(
     useCallback(() => {
-      const dt = 0.01;
+      const dt = 0.005;
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -219,6 +339,16 @@ export function Renderer({
         dt,
         iters: 10,
       });
+
+      advect({
+        encoder,
+        target: densityRwp,
+        targetSampler: densitySampler,
+        dt,
+      });
+
+      densityRwp.commit();
+      velocityRwp.commit();
 
       const renderBindGroup = device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
@@ -237,6 +367,7 @@ export function Renderer({
 
       device.queue.submit([encoder.finish()]);
     }, [
+      advect,
       context,
       densityRwp,
       densitySampler,
@@ -245,6 +376,7 @@ export function Renderer({
       diffuseUniformsBuffer,
       renderPassDescriptor,
       renderPipeline,
+      velocityRwp,
     ])
   );
 
