@@ -28,14 +28,14 @@ export function Renderer({
   }, [context, device]);
 
   const densityRwp = useMemo(() => {
-    const data = new Float32Array(N * N);
-    for (let x = 0; x < N; ++x) {
-      for (let y = 0; y < N; ++y) {
-        const dx = x - N / 2;
-        const dy = y - N / 2;
+    const data = new Float32Array((N + 2) * (N + 2));
+    for (let x = 1; x <= N; ++x) {
+      for (let y = 1; y <= N; ++y) {
+        const dx = x - (N + 2) / 2;
+        const dy = y - (N + 2) / 2;
         const dist = Math.hypot(dx, dy);
         if (dist < 20) {
-          data[y * N + x] = 1;
+          data[y * (N + 2) + x] = 1;
         }
       }
     }
@@ -45,7 +45,7 @@ export function Renderer({
       descriptor: {
         label: `density texture`,
         format: "r32float",
-        size: [N, N],
+        size: [N + 2, N + 2],
         usage:
           GPUTextureUsage.STORAGE_BINDING |
           GPUTextureUsage.TEXTURE_BINDING |
@@ -57,21 +57,26 @@ export function Renderer({
           { texture },
           data,
           {
-            bytesPerRow: data.BYTES_PER_ELEMENT * N,
-            rowsPerImage: N,
+            bytesPerRow: data.BYTES_PER_ELEMENT * (N + 2),
+            rowsPerImage: N + 2,
           },
-          [N, N]
+          [N + 2, N + 2]
         );
       },
     });
   }, [device]);
 
   const velocityRwp = useMemo(() => {
-    const data = new Float32Array(N * N * 2);
-    for (let x = 0; x < N; ++x) {
-      for (let y = 0; y < N; ++y) {
-        data[(y * N + x) * 2] = 1;
-        data[(y * N + x) * 2 + 1] = 0.1;
+    const data = new Float32Array((N + 2) * (N + 2) * 2);
+    for (let x = 1; x <= N; ++x) {
+      for (let y = 1; y <= N; ++y) {
+        const dx = x - (N + 2) / 2;
+        const dy = y - (N + 2) / 2;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 20) {
+          data[(y * (N + 2) + x) * 2 + 0] = -1;
+          data[(y * (N + 2) + x) * 2 + 1] = -1;
+        }
       }
     }
 
@@ -80,7 +85,7 @@ export function Renderer({
       descriptor: {
         label: "velocity texture",
         format: "rg32float",
-        size: [N, N],
+        size: [N + 2, N + 2],
         usage:
           GPUTextureUsage.STORAGE_BINDING |
           GPUTextureUsage.TEXTURE_BINDING |
@@ -92,10 +97,10 @@ export function Renderer({
           { texture },
           data,
           {
-            bytesPerRow: data.BYTES_PER_ELEMENT * N * 2,
-            rowsPerImage: N,
+            bytesPerRow: data.BYTES_PER_ELEMENT * (N + 2) * 2,
+            rowsPerImage: N + 2,
           },
-          [N, N]
+          [N + 2, N + 2]
         );
       },
     });
@@ -119,11 +124,20 @@ export function Renderer({
     [device]
   );
 
-  const advectModule = useMemo(
+  const advectRModule = useMemo(
     () =>
       device.createShaderModule({
         label: "advect module",
         code: advectModuleCode({ texFormat: "r32float", workgroupDim }),
+      }),
+    [device]
+  );
+
+  const advectRGModule = useMemo(
+    () =>
+      device.createShaderModule({
+        label: "advect module",
+        code: advectModuleCode({ texFormat: "rg32float", workgroupDim }),
       }),
     [device]
   );
@@ -179,17 +193,30 @@ export function Renderer({
     [device, diffuseModule]
   );
 
-  const advectPipeline = useMemo(
+  const advectRPipeline = useMemo(
     () =>
       device.createComputePipeline({
-        label: "advect pipeline",
+        label: "advect r32f pipeline",
         layout: "auto",
         compute: {
-          module: advectModule,
+          module: advectRModule,
           entryPoint: "advect",
         },
       }),
-    [advectModule, device]
+    [advectRModule, device]
+  );
+
+  const advectRGPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "advect rg32f pipeline",
+        layout: "auto",
+        compute: {
+          module: advectRGModule,
+          entryPoint: "advect",
+        },
+      }),
+    [advectRGModule, device]
   );
 
   const diffuse = useCallback(
@@ -227,8 +254,8 @@ export function Renderer({
         pass.setPipeline(diffuseStepPipeline);
         pass.setBindGroup(0, bindGroup);
         pass.dispatchWorkgroups(
-          Math.ceil(N / workgroupDim),
-          Math.ceil(N / workgroupDim)
+          Math.ceil((N + 2) / workgroupDim),
+          Math.ceil((N + 2) / workgroupDim)
         );
         pass.end();
 
@@ -255,8 +282,20 @@ export function Renderer({
         dt,
       });
 
+      let pipeline;
+      switch (target.readTex.format) {
+        case "r32float":
+          pipeline = advectRPipeline;
+          break;
+        case "rg32float":
+          pipeline = advectRGPipeline;
+          break;
+        default:
+          throw new Error("Invalid texture format for advect()");
+      }
+
       const bindGroup = device.createBindGroup({
-        layout: advectPipeline.getBindGroupLayout(0),
+        layout: pipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: advectUniformsBuffer },
           { binding: 1, resource: target.readTex.createView() },
@@ -267,17 +306,23 @@ export function Renderer({
       });
 
       const pass = encoder.beginComputePass();
-      pass.setPipeline(advectPipeline);
+      pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
       pass.dispatchWorkgroups(
-        Math.ceil(N / workgroupDim),
-        Math.ceil(N / workgroupDim)
+        Math.ceil((N + 2) / workgroupDim),
+        Math.ceil((N + 2) / workgroupDim)
       );
       pass.end();
 
       target.swap();
     },
-    [advectPipeline, advectUniformsBuffer, device, velocityRwp.readTex]
+    [
+      advectRGPipeline,
+      advectRPipeline,
+      advectUniformsBuffer,
+      device,
+      velocityRwp.readTex,
+    ]
   );
 
   const renderModule = useMemo(
@@ -332,6 +377,8 @@ export function Renderer({
         label: "Field display encoder",
       });
 
+      densityRwp.commit();
+
       diffuse({
         encoder,
         target: densityRwp,
@@ -340,6 +387,8 @@ export function Renderer({
         iters: 10,
       });
 
+      densityRwp.commit();
+
       advect({
         encoder,
         target: densityRwp,
@@ -347,8 +396,16 @@ export function Renderer({
         dt,
       });
 
-      densityRwp.commit();
-      velocityRwp.commit();
+      // velocityRwp.commit();
+
+      // advect({
+      //   encoder,
+      //   target: velocityRwp,
+      //   targetSampler: densitySampler,
+      //   dt,
+      // });
+
+      // velocityRwp.commit();
 
       const renderBindGroup = device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
@@ -376,7 +433,6 @@ export function Renderer({
       diffuseUniformsBuffer,
       renderPassDescriptor,
       renderPipeline,
-      velocityRwp,
     ])
   );
 

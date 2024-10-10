@@ -30,7 +30,7 @@ export function advectModuleCode({
           vec2f(0.5),
           vec2f(f32(uniforms.N)) + vec2f(0.5),
         );
-        let samplePos = backPos / vec2f(textureDimensions(readTex).xy);
+        let samplePos = backPos / vec2f(textureDimensions(readTex).xy - vec2u(1));
         let value = textureSampleLevel(readTex, readSampler, samplePos, 0);
         textureStore(writeTex, id.xy, value);
       }
