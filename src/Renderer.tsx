@@ -74,8 +74,8 @@ export function Renderer({
         const dy = y - (N + 2) / 2;
         const dist = Math.hypot(dx, dy);
         if (dist < 20) {
-          data[(y * (N + 2) + x) * 2 + 0] = -1;
-          data[(y * (N + 2) + x) * 2 + 1] = -1;
+          data[(y * (N + 2) + x) * 2 + 0] = 1;
+          data[(y * (N + 2) + x) * 2 + 1] = 0;
         }
       }
     }
@@ -270,11 +270,13 @@ export function Renderer({
       encoder,
       target,
       targetSampler,
+      velocityTex,
       dt,
     }: {
       encoder: GPUCommandEncoder;
       target: ReadWritePrevTex;
       targetSampler: GPUSampler;
+      velocityTex: GPUTexture;
       dt: number;
     }) => {
       advectUniformsBuffer.write({
@@ -301,7 +303,7 @@ export function Renderer({
           { binding: 1, resource: target.readTex.createView() },
           { binding: 2, resource: targetSampler },
           { binding: 3, resource: target.writeTex.createView() },
-          { binding: 4, resource: velocityRwp.readTex.createView() },
+          { binding: 4, resource: velocityTex.createView() },
         ],
       });
 
@@ -316,13 +318,7 @@ export function Renderer({
 
       target.swap();
     },
-    [
-      advectRGPipeline,
-      advectRPipeline,
-      advectUniformsBuffer,
-      device,
-      velocityRwp.readTex,
-    ]
+    [advectRGPipeline, advectRPipeline, advectUniformsBuffer, device]
   );
 
   const renderModule = useMemo(
@@ -368,7 +364,7 @@ export function Renderer({
 
   useAnimationFrame(
     useCallback(() => {
-      const dt = 0.005;
+      const dt = 0.001;
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -377,15 +373,15 @@ export function Renderer({
         label: "Field display encoder",
       });
 
-      densityRwp.commit();
+      // densityRwp.commit();
 
-      diffuse({
-        encoder,
-        target: densityRwp,
-        diff: 0.01,
-        dt,
-        iters: 10,
-      });
+      // diffuse({
+      //   encoder,
+      //   target: densityRwp,
+      //   diff: 0.01,
+      //   dt,
+      //   iters: 10,
+      // });
 
       densityRwp.commit();
 
@@ -393,19 +389,19 @@ export function Renderer({
         encoder,
         target: densityRwp,
         targetSampler: densitySampler,
+        velocityTex: velocityRwp.readTex,
         dt,
       });
 
-      // velocityRwp.commit();
+      velocityRwp.commit();
 
-      // advect({
-      //   encoder,
-      //   target: velocityRwp,
-      //   targetSampler: densitySampler,
-      //   dt,
-      // });
-
-      // velocityRwp.commit();
+      advect({
+        encoder,
+        target: velocityRwp,
+        targetSampler: densitySampler,
+        velocityTex: velocityRwp.prevTex,
+        dt,
+      });
 
       const renderBindGroup = device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
@@ -426,13 +422,13 @@ export function Renderer({
     }, [
       advect,
       context,
-      densityRwp,
+      densityRwp.readTex,
       densitySampler,
       device,
-      diffuse,
       diffuseUniformsBuffer,
       renderPassDescriptor,
       renderPipeline,
+      velocityRwp,
     ])
   );
 

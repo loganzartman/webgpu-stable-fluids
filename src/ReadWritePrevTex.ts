@@ -14,7 +14,8 @@ export class ReadWritePrevTex {
   }) {
     const oldLabel = descriptor.label ?? "<unnamed>";
     const textures = Array.from({ length: 3 }).map((_, i) => {
-      const label = `${oldLabel} RWP #${i}`;
+      const name = ["read", "write", "prev"][i];
+      const label = `${oldLabel} ${name}`;
       const texture = device.createTexture({ ...descriptor, label });
       writeInitialData?.(texture);
       return texture;
@@ -29,6 +30,11 @@ export class ReadWritePrevTex {
   }
 
   commit() {
+    // encoder.copyTextureToTexture(
+    //   { texture: this.readTex },
+    //   { texture: this.prevTex },
+    //   [this.readTex.width, this.readTex.height]
+    // );
     [this.prevTex, this.writeTex] = [this.writeTex, this.prevTex];
   }
 }
