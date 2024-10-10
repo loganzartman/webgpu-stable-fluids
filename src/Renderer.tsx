@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
-import diffuseModuleCode from "./diffuseModule.wgsl?raw";
+import { diffuseModuleCode } from "./diffuseModule";
 import { advectModuleCode } from "./advectModule";
 import { f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
@@ -114,7 +114,7 @@ export function Renderer({
     () =>
       device.createShaderModule({
         label: "diffuse module",
-        code: diffuseModuleCode,
+        code: diffuseModuleCode({ workgroupDim }),
       }),
     [device]
   );
