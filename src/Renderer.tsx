@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
 import diffuseModuleCode from "./diffuseModule.wgsl?raw";
-import advectModuleCode from "./advectModule.wgsl?raw";
+import { advectModuleCode } from "./advectModule";
 import { f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
 import { ReadWritePrevTex } from "./ReadWritePrevTex";
@@ -123,7 +123,7 @@ export function Renderer({
     () =>
       device.createShaderModule({
         label: "advect module",
-        code: advectModuleCode,
+        code: advectModuleCode({ texFormat: "r32float", workgroupDim }),
       }),
     [device]
   );
