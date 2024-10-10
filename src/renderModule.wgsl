@@ -45,9 +45,12 @@ struct VertexOutput {
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4f {
   _ = uniforms;
   let densityRaw = textureSample(densityTexture, densitySampler, input.uv).rgb;
+  var color = vec3f(0,0,1);
+  if (any(densityRaw != vec3f(0))) {
+    color = vec3f(clamp(-length(densityRaw),0,1) * 100, clamp(length(densityRaw),0,1) * 100, 0);
+  }
   // density = max(0, density);
   // density = density / (density + 1);
   // let color = vec3(pow(density, 1.1), pow(density, 1.7), pow(density, 0.5));
-  // return vec4(color, 1);
-  return vec4(densityRaw, 1);
+  return vec4(color, 1);
 }

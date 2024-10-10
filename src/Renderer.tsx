@@ -6,6 +6,7 @@ import { advectModuleCode } from "./advectModule";
 import { f32, u32, struct } from "typegpu/data";
 import tgpu from "typegpu";
 import { ReadWritePrevTex } from "./ReadWritePrevTex";
+import { projectModuleCode } from "./projectModule";
 
 const N = 256;
 const workgroupDim = 8;
@@ -106,7 +107,39 @@ export function Renderer({
     });
   }, [device]);
 
-  const densitySampler = useMemo(
+  const divergenceRwp = useMemo(() => {
+    return new ReadWritePrevTex({
+      device,
+      descriptor: {
+        label: "divergence texture",
+        format: "r32float",
+        size: [N + 2, N + 2],
+        usage:
+          GPUTextureUsage.STORAGE_BINDING |
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_SRC |
+          GPUTextureUsage.COPY_DST,
+      },
+    });
+  }, []);
+
+  const pressureRwp = useMemo(() => {
+    return new ReadWritePrevTex({
+      device,
+      descriptor: {
+        label: "pressure texture",
+        format: "r32float",
+        size: [N + 2, N + 2],
+        usage:
+          GPUTextureUsage.STORAGE_BINDING |
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_SRC |
+          GPUTextureUsage.COPY_DST,
+      },
+    });
+  }, []);
+
+  const linearSampler = useMemo(
     () =>
       device.createSampler({
         minFilter: "linear",
@@ -142,6 +175,15 @@ export function Renderer({
     [device]
   );
 
+  const projectModule = useMemo(
+    () =>
+      device.createShaderModule({
+        label: "project module",
+        code: projectModuleCode({ workgroupDim }),
+      }),
+    [device]
+  );
+
   const diffuseUniformsBuffer = useMemo(
     () =>
       tgpu
@@ -163,6 +205,24 @@ export function Renderer({
   );
 
   const advectUniformsBuffer = useMemo(
+    () =>
+      tgpu
+        .createBuffer(
+          struct({
+            N: u32,
+            dt: f32,
+          }),
+          {
+            N,
+            dt: 0,
+          }
+        )
+        .$device(device)
+        .$usage(tgpu.Uniform),
+    [device]
+  );
+
+  const projectUniformsBuffer = useMemo(
     () =>
       tgpu
         .createBuffer(
@@ -217,6 +277,19 @@ export function Renderer({
         },
       }),
     [advectRGModule, device]
+  );
+
+  const projectInitPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "projectInit pipeline",
+        layout: "auto",
+        compute: {
+          module: projectModule,
+          entryPoint: "projectInit",
+        },
+      }),
+    [device, projectModule]
   );
 
   const diffuse = useCallback(
@@ -321,6 +394,57 @@ export function Renderer({
     [advectRGPipeline, advectRPipeline, advectUniformsBuffer, device]
   );
 
+  const project = useCallback(
+    ({
+      encoder,
+      dt,
+      iters,
+    }: {
+      encoder: GPUCommandEncoder;
+      dt: number;
+      iters: number;
+    }) => {
+      projectUniformsBuffer.write({
+        N,
+        dt,
+      });
+
+      const initBindGroup = device.createBindGroup({
+        layout: projectInitPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: projectUniformsBuffer },
+          { binding: 1, resource: velocityRwp.readTex.createView() },
+          { binding: 2, resource: velocityRwp.writeTex.createView() },
+          { binding: 3, resource: linearSampler },
+          { binding: 4, resource: divergenceRwp.readTex.createView() },
+          { binding: 5, resource: divergenceRwp.writeTex.createView() },
+          { binding: 6, resource: pressureRwp.readTex.createView() },
+          { binding: 7, resource: pressureRwp.writeTex.createView() },
+        ],
+      });
+
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(projectInitPipeline);
+      pass.setBindGroup(0, initBindGroup);
+      pass.dispatchWorkgroups(
+        Math.ceil((N + 2) / workgroupDim),
+        Math.ceil((N + 2) / workgroupDim)
+      );
+      pass.end();
+      divergenceRwp.swap();
+      pressureRwp.swap();
+    },
+    [
+      device,
+      divergenceRwp,
+      linearSampler,
+      pressureRwp,
+      projectInitPipeline,
+      projectUniformsBuffer,
+      velocityRwp,
+    ]
+  );
+
   const renderModule = useMemo(
     () =>
       device.createShaderModule({
@@ -388,7 +512,7 @@ export function Renderer({
       advect({
         encoder,
         target: densityRwp,
-        targetSampler: densitySampler,
+        targetSampler: linearSampler,
         velocityTex: velocityRwp.readTex,
         dt,
       });
@@ -398,8 +522,14 @@ export function Renderer({
       advect({
         encoder,
         target: velocityRwp,
-        targetSampler: densitySampler,
+        targetSampler: linearSampler,
         velocityTex: velocityRwp.prevTex,
+        dt,
+      });
+
+      project({
+        encoder,
+        iters: 10,
         dt,
       });
 
@@ -407,8 +537,8 @@ export function Renderer({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: diffuseUniformsBuffer },
-          { binding: 1, resource: densityRwp.readTex.createView() },
-          { binding: 2, resource: densitySampler },
+          { binding: 1, resource: divergenceRwp.readTex.createView() },
+          { binding: 2, resource: linearSampler },
         ],
       });
 
@@ -420,15 +550,17 @@ export function Renderer({
 
       device.queue.submit([encoder.finish()]);
     }, [
-      advect,
-      context,
-      densityRwp.readTex,
-      densitySampler,
-      device,
-      diffuseUniformsBuffer,
       renderPassDescriptor,
-      renderPipeline,
+      context,
+      device,
+      densityRwp,
+      advect,
+      linearSampler,
       velocityRwp,
+      project,
+      renderPipeline,
+      diffuseUniformsBuffer,
+      divergenceRwp.readTex,
     ])
   );
 
