@@ -292,6 +292,19 @@ export function Renderer({
     [device, projectModule]
   );
 
+  const projectSolvePipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "projectSolve pipeline",
+        layout: "auto",
+        compute: {
+          module: projectModule,
+          entryPoint: "projectSolve",
+        },
+      }),
+    [device, projectModule]
+  );
+
   const diffuse = useCallback(
     ({
       encoder,
@@ -409,6 +422,7 @@ export function Renderer({
         dt,
       });
 
+      // init
       const initBindGroup = device.createBindGroup({
         layout: projectInitPipeline.getBindGroupLayout(0),
         entries: [
@@ -433,6 +447,33 @@ export function Renderer({
       pass.end();
       divergenceRwp.swap();
       pressureRwp.swap();
+
+      // solve
+      for (let i = 0; i < iters; ++i) {
+        const solveBindGroup = device.createBindGroup({
+          layout: projectSolvePipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: projectUniformsBuffer },
+            { binding: 1, resource: velocityRwp.readTex.createView() },
+            { binding: 2, resource: velocityRwp.writeTex.createView() },
+            { binding: 3, resource: linearSampler },
+            { binding: 4, resource: divergenceRwp.readTex.createView() },
+            { binding: 5, resource: divergenceRwp.writeTex.createView() },
+            { binding: 6, resource: pressureRwp.readTex.createView() },
+            { binding: 7, resource: pressureRwp.writeTex.createView() },
+          ],
+        });
+
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(projectSolvePipeline);
+        pass.setBindGroup(0, solveBindGroup);
+        pass.dispatchWorkgroups(
+          Math.ceil((N + 2) / workgroupDim),
+          Math.ceil((N + 2) / workgroupDim)
+        );
+        pass.end();
+        pressureRwp.swap();
+      }
     },
     [
       device,
@@ -440,6 +481,7 @@ export function Renderer({
       linearSampler,
       pressureRwp,
       projectInitPipeline,
+      projectSolvePipeline,
       projectUniformsBuffer,
       velocityRwp,
     ]
@@ -537,7 +579,7 @@ export function Renderer({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: diffuseUniformsBuffer },
-          { binding: 1, resource: divergenceRwp.readTex.createView() },
+          { binding: 1, resource: pressureRwp.readTex.createView() },
           { binding: 2, resource: linearSampler },
         ],
       });

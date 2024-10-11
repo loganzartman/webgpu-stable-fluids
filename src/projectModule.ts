@@ -48,7 +48,29 @@ export function projectModuleCode({
 
     @compute @workgroup_size(${workgroupDim}, ${workgroupDim}) fn projectSolve(
       @builtin(global_invocation_id) id: vec3u,
-    ) {}
+    ) {
+      _ = velReadTex;
+      _ = velWriteTex;
+      _ = velSampler;
+      _ = divWriteTex;
+
+      if (!(all(id.xy >= vec2u(1)) && all(id.xy <= vec2u(uniforms.N)))) {
+        return;
+      }
+      
+      let x = i32(id.x);
+      let y = i32(id.y);
+      let divergence = textureLoad(divReadTex, id.xy, 0).r;
+      let pressure = (
+        divergence +
+        textureLoad(presReadTex, vec2i(x - 1, y), 0) + 
+        textureLoad(presReadTex, vec2i(x + 1, y), 0) + 
+        textureLoad(presReadTex, vec2i(x, y - 1), 0) + 
+        textureLoad(presReadTex, vec2i(x, y + 1), 0)
+      ) / 4.0;
+      
+      textureStore(presWriteTex, id.xy, pressure);
+    }
     
     @compute @workgroup_size(${workgroupDim}, ${workgroupDim}) fn projectApply(
       @builtin(global_invocation_id) id: vec3u,
