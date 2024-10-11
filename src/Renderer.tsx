@@ -34,7 +34,8 @@ export function Renderer({
       pointer.x = (e.clientX / rect.width) * N;
       pointer.y = (e.clientY / rect.height) * N;
     }
-    function onDown() {
+    function onDown(e: PointerEvent) {
+      onMove(e);
       pointer.down = true;
     }
     function onUp() {
@@ -270,10 +271,12 @@ export function Renderer({
           struct({
             N: u32,
             dt: f32,
+            i: u32,
           }),
           {
             N,
             dt: 0,
+            i: 0,
           }
         )
         .$device(device)
@@ -505,6 +508,7 @@ export function Renderer({
       projectUniformsBuffer.write({
         N,
         dt,
+        i: 0,
       });
 
       // init
@@ -534,6 +538,12 @@ export function Renderer({
 
       // solve
       for (let i = 0; i < iters; ++i) {
+        projectUniformsBuffer.write({
+          N,
+          dt,
+          i,
+        });
+
         const solveBindGroup = device.createBindGroup({
           layout: projectSolvePipeline.getBindGroupLayout(0),
           entries: [
@@ -629,8 +639,10 @@ export function Renderer({
           { binding: 0, resource: splatUniformsBuffer },
           { binding: 1, resource: densityRwp.readTex.createView() },
           { binding: 2, resource: densityRwp.writeTex.createView() },
-          { binding: 3, resource: velocityRwp.readTex.createView() },
-          { binding: 4, resource: velocityRwp.writeTex.createView() },
+          { binding: 3, resource: densityRwp.prevTex.createView() },
+          { binding: 4, resource: velocityRwp.readTex.createView() },
+          { binding: 5, resource: velocityRwp.writeTex.createView() },
+          { binding: 6, resource: velocityRwp.prevTex.createView() },
         ],
       });
 
@@ -706,9 +718,9 @@ export function Renderer({
       // diffuse({
       //   encoder,
       //   target: densityRwp,
-      //   diff: 0.01,
+      //   diff: 0.0001,
       //   dt,
-      //   iters: 10,
+      //   iters: 100,
       // });
 
       if (pointer.down) {
@@ -774,13 +786,14 @@ export function Renderer({
       context,
       device,
       densityRwp,
+      pointer,
       advect,
       linearSampler,
       velocityRwp,
       project,
       renderPipeline,
       diffuseUniformsBuffer,
-      pointer,
+      splat,
     ])
   );
 
