@@ -121,7 +121,7 @@ export function Renderer({
           GPUTextureUsage.COPY_DST,
       },
     });
-  }, []);
+  }, [device]);
 
   const pressureRwp = useMemo(() => {
     return new ReadWritePrevTex({
@@ -137,7 +137,7 @@ export function Renderer({
           GPUTextureUsage.COPY_DST,
       },
     });
-  }, []);
+  }, [device]);
 
   const linearSampler = useMemo(
     () =>
@@ -442,11 +442,10 @@ export function Renderer({
           { binding: 0, resource: projectUniformsBuffer },
           { binding: 1, resource: velocityRwp.readTex.createView() },
           { binding: 2, resource: velocityRwp.writeTex.createView() },
-          { binding: 3, resource: linearSampler },
-          { binding: 4, resource: divergenceRwp.readTex.createView() },
-          { binding: 5, resource: divergenceRwp.writeTex.createView() },
-          { binding: 6, resource: pressureRwp.readTex.createView() },
-          { binding: 7, resource: pressureRwp.writeTex.createView() },
+          { binding: 3, resource: divergenceRwp.readTex.createView() },
+          { binding: 4, resource: divergenceRwp.writeTex.createView() },
+          { binding: 5, resource: pressureRwp.readTex.createView() },
+          { binding: 6, resource: pressureRwp.writeTex.createView() },
         ],
       });
 
@@ -469,11 +468,10 @@ export function Renderer({
             { binding: 0, resource: projectUniformsBuffer },
             { binding: 1, resource: velocityRwp.readTex.createView() },
             { binding: 2, resource: velocityRwp.writeTex.createView() },
-            { binding: 3, resource: linearSampler },
-            { binding: 4, resource: divergenceRwp.readTex.createView() },
-            { binding: 5, resource: divergenceRwp.writeTex.createView() },
-            { binding: 6, resource: pressureRwp.readTex.createView() },
-            { binding: 7, resource: pressureRwp.writeTex.createView() },
+            { binding: 3, resource: divergenceRwp.readTex.createView() },
+            { binding: 4, resource: divergenceRwp.writeTex.createView() },
+            { binding: 5, resource: pressureRwp.readTex.createView() },
+            { binding: 6, resource: pressureRwp.writeTex.createView() },
           ],
         });
 
@@ -495,11 +493,10 @@ export function Renderer({
           { binding: 0, resource: projectUniformsBuffer },
           { binding: 1, resource: velocityRwp.readTex.createView() },
           { binding: 2, resource: velocityRwp.writeTex.createView() },
-          { binding: 3, resource: linearSampler },
-          { binding: 4, resource: divergenceRwp.readTex.createView() },
-          { binding: 5, resource: divergenceRwp.writeTex.createView() },
-          { binding: 6, resource: pressureRwp.readTex.createView() },
-          { binding: 7, resource: pressureRwp.writeTex.createView() },
+          { binding: 3, resource: divergenceRwp.readTex.createView() },
+          { binding: 4, resource: divergenceRwp.writeTex.createView() },
+          { binding: 5, resource: pressureRwp.readTex.createView() },
+          { binding: 6, resource: pressureRwp.writeTex.createView() },
         ],
       });
 
@@ -516,7 +513,6 @@ export function Renderer({
     [
       device,
       divergenceRwp,
-      linearSampler,
       pressureRwp,
       projectApplyPipeline,
       projectInitPipeline,
@@ -569,7 +565,7 @@ export function Renderer({
 
   useAnimationFrame(
     useCallback(() => {
-      const dt = 0.001;
+      const dt = 0.005;
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -610,7 +606,7 @@ export function Renderer({
 
       project({
         encoder,
-        iters: 10,
+        iters: 20,
         dt,
       });
 
@@ -618,7 +614,7 @@ export function Renderer({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: diffuseUniformsBuffer },
-          { binding: 1, resource: pressureRwp.readTex.createView() },
+          { binding: 1, resource: densityRwp.readTex.createView() },
           { binding: 2, resource: linearSampler },
         ],
       });
@@ -641,7 +637,6 @@ export function Renderer({
       project,
       renderPipeline,
       diffuseUniformsBuffer,
-      pressureRwp.readTex,
     ])
   );
 
