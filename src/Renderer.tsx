@@ -305,6 +305,19 @@ export function Renderer({
     [device, projectModule]
   );
 
+  const projectApplyPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "projectApply pipeline",
+        layout: "auto",
+        compute: {
+          module: projectModule,
+          entryPoint: "projectApply",
+        },
+      }),
+    [device, projectModule]
+  );
+
   const diffuse = useCallback(
     ({
       encoder,
@@ -437,14 +450,14 @@ export function Renderer({
         ],
       });
 
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(projectInitPipeline);
-      pass.setBindGroup(0, initBindGroup);
-      pass.dispatchWorkgroups(
+      const initPass = encoder.beginComputePass();
+      initPass.setPipeline(projectInitPipeline);
+      initPass.setBindGroup(0, initBindGroup);
+      initPass.dispatchWorkgroups(
         Math.ceil((N + 2) / workgroupDim),
         Math.ceil((N + 2) / workgroupDim)
       );
-      pass.end();
+      initPass.end();
       divergenceRwp.swap();
       pressureRwp.swap();
 
@@ -474,12 +487,38 @@ export function Renderer({
         pass.end();
         pressureRwp.swap();
       }
+
+      // apply
+      const applyBindGroup = device.createBindGroup({
+        layout: projectApplyPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: projectUniformsBuffer },
+          { binding: 1, resource: velocityRwp.readTex.createView() },
+          { binding: 2, resource: velocityRwp.writeTex.createView() },
+          { binding: 3, resource: linearSampler },
+          { binding: 4, resource: divergenceRwp.readTex.createView() },
+          { binding: 5, resource: divergenceRwp.writeTex.createView() },
+          { binding: 6, resource: pressureRwp.readTex.createView() },
+          { binding: 7, resource: pressureRwp.writeTex.createView() },
+        ],
+      });
+
+      const applyPass = encoder.beginComputePass();
+      applyPass.setPipeline(projectApplyPipeline);
+      applyPass.setBindGroup(0, applyBindGroup);
+      applyPass.dispatchWorkgroups(
+        Math.ceil((N + 2) / workgroupDim),
+        Math.ceil((N + 2) / workgroupDim)
+      );
+      applyPass.end();
+      velocityRwp.swap();
     },
     [
       device,
       divergenceRwp,
       linearSampler,
       pressureRwp,
+      projectApplyPipeline,
       projectInitPipeline,
       projectSolvePipeline,
       projectUniformsBuffer,
@@ -602,7 +641,7 @@ export function Renderer({
       project,
       renderPipeline,
       diffuseUniformsBuffer,
-      divergenceRwp.readTex,
+      pressureRwp.readTex,
     ])
   );
 

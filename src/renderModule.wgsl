@@ -9,8 +9,8 @@ struct VertexOutput {
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var densityTexture: texture_2d<f32>;
-@group(0) @binding(2) var densitySampler: sampler;
+@group(0) @binding(1) var fieldTexture: texture_2d<f32>;
+@group(0) @binding(2) var fieldSampler: sampler;
 
 @vertex fn vs(
   @builtin(vertex_index) vertexIndex : u32
@@ -44,10 +44,10 @@ struct VertexOutput {
 
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4f {
   _ = uniforms;
-  let densityRaw = textureSample(densityTexture, densitySampler, input.uv).rgb;
-  var color = vec3f(0,0,1);
-  if (any(densityRaw != vec3f(0))) {
-    color = vec3f(clamp(-length(densityRaw),0,1) * 100, clamp(length(densityRaw),0,1) * 100, 0);
+  let fieldRaw = textureSample(fieldTexture, fieldSampler, input.uv).rgb;
+  var color = vec3f(0,0,0);
+  if (any(fieldRaw != vec3f(0))) {
+    color = abs(fieldRaw).rgb;
   }
   // density = max(0, density);
   // density = density / (density + 1);
