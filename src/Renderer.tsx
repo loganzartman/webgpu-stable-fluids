@@ -1,12 +1,13 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAnimationFrame } from "./useAnimationFrame";
 import renderModuleCode from "./renderModule.wgsl?raw";
 import { diffuseModuleCode } from "./diffuseModule";
 import { advectModuleCode } from "./advectModule";
-import { f32, u32, struct } from "typegpu/data";
+import { f32, u32, struct, vec2f } from "typegpu/data";
 import tgpu from "typegpu";
 import { ReadWritePrevTex } from "./ReadWritePrevTex";
 import { projectModuleCode } from "./projectModule";
+import { splatModuleCode } from "./splatModule";
 
 const N = 256;
 const workgroupDim = 8;
@@ -19,6 +20,37 @@ export function Renderer({
   adapter: GPUAdapter;
   device: GPUDevice;
 }) {
+  const { current: pointer } = useRef({
+    x: 0,
+    y: 0,
+    px: 0,
+    py: 0,
+    down: false,
+  });
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const rect = document.body.getBoundingClientRect();
+      pointer.x = (e.clientX / rect.width) * N;
+      pointer.y = (e.clientY / rect.height) * N;
+    }
+    function onDown() {
+      pointer.down = true;
+    }
+    function onUp() {
+      pointer.down = false;
+    }
+
+    window.addEventListener("pointerdown", onDown, false);
+    window.addEventListener("pointerup", onUp, false);
+    window.addEventListener("pointermove", onMove, false);
+    return () => {
+      window.removeEventListener("pointerdown", onDown, false);
+      window.removeEventListener("pointerup", onUp, false);
+      window.removeEventListener("pointermove", onMove, false);
+    };
+  }, [pointer]);
+
   const format = useMemo(() => {
     const format = navigator.gpu.getPreferredCanvasFormat();
     context.configure({
@@ -184,6 +216,15 @@ export function Renderer({
     [device]
   );
 
+  const splatModule = useMemo(
+    () =>
+      device.createShaderModule({
+        label: "splat module",
+        code: splatModuleCode({ workgroupDim }),
+      }),
+    [device]
+  );
+
   const diffuseUniformsBuffer = useMemo(
     () =>
       tgpu
@@ -234,6 +275,24 @@ export function Renderer({
             N,
             dt: 0,
           }
+        )
+        .$device(device)
+        .$usage(tgpu.Uniform),
+    [device]
+  );
+
+  const splatUniformsBuffer = useMemo(
+    () =>
+      tgpu
+        .createBuffer(
+          struct({
+            N: u32,
+            dt: f32,
+            position: vec2f,
+            velocity: vec2f,
+            radius: f32,
+            amount: f32,
+          })
         )
         .$device(device)
         .$usage(tgpu.Uniform),
@@ -316,6 +375,19 @@ export function Renderer({
         },
       }),
     [device, projectModule]
+  );
+
+  const splatPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "splat pipeline",
+        layout: "auto",
+        compute: {
+          module: splatModule,
+          entryPoint: "splat",
+        },
+      }),
+    [device, splatModule]
   );
 
   const diffuse = useCallback(
@@ -522,6 +594,61 @@ export function Renderer({
     ]
   );
 
+  const splat = useCallback(
+    ({
+      encoder,
+      dt,
+      x,
+      y,
+      vx,
+      vy,
+      radius,
+      amount,
+    }: {
+      encoder: GPUCommandEncoder;
+      dt: number;
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+      amount: number;
+    }) => {
+      splatUniformsBuffer.write({
+        N,
+        dt,
+        position: vec2f(x, y),
+        velocity: vec2f(vx, vy),
+        radius,
+        amount,
+      });
+
+      const bindGroup = device.createBindGroup({
+        layout: splatPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: splatUniformsBuffer },
+          { binding: 1, resource: densityRwp.readTex.createView() },
+          { binding: 2, resource: densityRwp.writeTex.createView() },
+          { binding: 3, resource: velocityRwp.readTex.createView() },
+          { binding: 4, resource: velocityRwp.writeTex.createView() },
+        ],
+      });
+
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(splatPipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(
+        Math.ceil((N + 2) / workgroupDim),
+        Math.ceil((N + 2) / workgroupDim)
+      );
+      pass.end();
+
+      densityRwp.swap();
+      velocityRwp.swap();
+    },
+    [densityRwp, device, splatPipeline, splatUniformsBuffer, velocityRwp]
+  );
+
   const renderModule = useMemo(
     () =>
       device.createShaderModule({
@@ -565,7 +692,7 @@ export function Renderer({
 
   useAnimationFrame(
     useCallback(() => {
-      const dt = 0.005;
+      const dt = 0.01;
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -583,6 +710,19 @@ export function Renderer({
       //   dt,
       //   iters: 10,
       // });
+
+      if (pointer.down) {
+        splat({
+          encoder,
+          dt,
+          x: pointer.x,
+          y: pointer.y,
+          vx: pointer.x - pointer.px,
+          vy: pointer.y - pointer.py,
+          radius: N / 20,
+          amount: 1,
+        });
+      }
 
       densityRwp.commit();
 
@@ -606,7 +746,7 @@ export function Renderer({
 
       project({
         encoder,
-        iters: 20,
+        iters: 100,
         dt,
       });
 
@@ -626,6 +766,9 @@ export function Renderer({
       renderPass.end();
 
       device.queue.submit([encoder.finish()]);
+
+      pointer.px = pointer.x;
+      pointer.py = pointer.y;
     }, [
       renderPassDescriptor,
       context,
@@ -637,6 +780,7 @@ export function Renderer({
       project,
       renderPipeline,
       diffuseUniformsBuffer,
+      pointer,
     ])
   );
 
