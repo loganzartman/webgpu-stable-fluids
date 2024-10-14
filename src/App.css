@@ -1,0 +1,12 @@
+.error-container {
+  background: color-mix(in srgb, currentColor 20%, transparent 20%);
+  font-family: system-ui;
+  font-size: 18px;
+  padding: 2rem;
+}
+
+.error-header {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
