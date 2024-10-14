@@ -9,7 +9,7 @@ import { ReadWritePrevTex } from "./ReadWritePrevTex";
 import { projectModuleCode } from "./projectModule";
 import { splatModuleCode } from "./splatModule";
 
-const N = 256;
+const N = 512;
 const workgroupDim = 8;
 
 export function Renderer({
@@ -718,7 +718,7 @@ export function Renderer({
       // diffuse({
       //   encoder,
       //   target: densityRwp,
-      //   diff: 0.0001,
+      //   diff: 0.001,
       //   dt,
       //   iters: 100,
       // });
@@ -729,9 +729,9 @@ export function Renderer({
           dt,
           x: pointer.x,
           y: pointer.y,
-          vx: pointer.x - pointer.px,
-          vy: pointer.y - pointer.py,
-          radius: N / 20,
+          vx: (pointer.x - pointer.px) * 0.1,
+          vy: (pointer.y - pointer.py) * 0.1,
+          radius: N / 50,
           amount: 1,
         });
       }

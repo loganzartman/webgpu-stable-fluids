@@ -46,7 +46,41 @@ struct VertexOutput {
   _ = uniforms;
   let fieldRaw = textureSample(fieldTexture, fieldSampler, input.uv).r;
   var value = max(0, fieldRaw);
-  value /= (value + 1);
-  let color = vec3(pow(value, 1.1), pow(value, 1.7), pow(value, 0.5));
+  // value /= (value + 1);
+  // let color = vec3(pow(value, 1.1), pow(value, 1.7), pow(value, 0.5));
+  // let color = vec3(pow(value, 0.512), pow(value, 0.361), pow(value, 0.133));
+  // let color = vec3(pow(value, 12), pow(value, 61), pow(value, 33));
+  let color = hsl_to_rgb(value * 360.0, 0.6, clamp(value * 5.0, 0, 0.5));
+  // let color = viridis(value).rgb;
   return vec4(color, 1);
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3<f32> {
+    if (s == 0.0) {
+        return vec3<f32>(l, l, l);
+    }
+
+    let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+    let x = c * (1.0 - abs((h / 60.0) % 2.0 - 1.0));
+    let m = l - c / 2.0;
+
+    var r: f32;
+    var g: f32;
+    var b: f32;
+
+    if (h < 60.0) {
+        r = c; g = x; b = 0.0;
+    } else if (h < 120.0) {
+        r = x; g = c; b = 0.0;
+    } else if (h < 180.0) {
+        r = 0.0; g = c; b = x;
+    } else if (h < 240.0) {
+        r = 0.0; g = x; b = c;
+    } else if (h < 300.0) {
+        r = x; g = 0.0; b = c;
+    } else {
+        r = c; g = 0.0; b = x;
+    }
+
+    return vec3<f32>(r + m, g + m, b + m);
 }
