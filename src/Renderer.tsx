@@ -433,7 +433,7 @@ export function Renderer({
         );
         pass.end();
 
-        target.swap();
+        target.flip();
       }
     },
     [device, diffuseStepPipeline, diffuseUniformsBuffer]
@@ -490,7 +490,7 @@ export function Renderer({
       );
       pass.end();
 
-      target.swap();
+      target.flip();
     },
     [advectRGPipeline, advectRPipeline, advectUniformsBuffer, device]
   );
@@ -533,8 +533,8 @@ export function Renderer({
         Math.ceil((N + 2) / workgroupDim)
       );
       initPass.end();
-      divergenceRwp.swap();
-      pressureRwp.swap();
+      divergenceRwp.flip();
+      pressureRwp.flip();
 
       // solve
       for (let i = 0; i < iters; ++i) {
@@ -565,7 +565,7 @@ export function Renderer({
           Math.ceil((N + 2) / workgroupDim)
         );
         pass.end();
-        pressureRwp.swap();
+        pressureRwp.flip();
       }
 
       // apply
@@ -590,7 +590,7 @@ export function Renderer({
         Math.ceil((N + 2) / workgroupDim)
       );
       applyPass.end();
-      velocityRwp.swap();
+      velocityRwp.flip();
     },
     [
       device,
@@ -655,8 +655,8 @@ export function Renderer({
       );
       pass.end();
 
-      densityRwp.swap();
-      velocityRwp.swap();
+      densityRwp.flip();
+      velocityRwp.flip();
     },
     [densityRwp, device, splatPipeline, splatUniformsBuffer, velocityRwp]
   );
@@ -724,11 +724,11 @@ export function Renderer({
           radius: N / 50,
           amount: 1,
         });
-        densityRwp.commit();
+        densityRwp.swap();
       } else {
         // TODO: why???
-        densityRwp.swap();
-        velocityRwp.swap();
+        densityRwp.flip();
+        velocityRwp.flip();
       }
 
       // velocity step
@@ -742,7 +742,7 @@ export function Renderer({
           iters: 50,
         });
 
-        velocityRwp.commit();
+        velocityRwp.swap();
 
         advect({
           encoder,
@@ -761,7 +761,7 @@ export function Renderer({
 
       // density step
       {
-        densityRwp.commit();
+        densityRwp.swap();
 
         diffuse({
           encoder,
@@ -771,7 +771,7 @@ export function Renderer({
           target: densityRwp,
         });
 
-        densityRwp.commit();
+        densityRwp.swap();
 
         advect({
           encoder,

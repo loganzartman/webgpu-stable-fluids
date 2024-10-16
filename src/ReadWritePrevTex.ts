@@ -25,11 +25,11 @@ export class ReadWritePrevTex {
     this.prevTex = textures[2];
   }
 
-  swap() {
+  flip() {
     [this.readTex, this.writeTex] = [this.writeTex, this.readTex];
   }
 
-  commit() {
+  swap() {
     // encoder.copyTextureToTexture(
     //   { texture: this.readTex },
     //   { texture: this.prevTex },
