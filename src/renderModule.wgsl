@@ -46,12 +46,11 @@ struct VertexOutput {
   _ = uniforms;
   let fieldRaw = textureSample(fieldTexture, fieldSampler, input.uv).r;
   var value = max(0, fieldRaw);
-  // value /= (value + 1);
-  // let color = vec3(pow(value, 1.1), pow(value, 1.7), pow(value, 0.5));
+  value /= (value + 1);
+  let color = vec3(pow(value, 1.1), pow(value, 1.7), pow(value, 0.5));
   // let color = vec3(pow(value, 0.512), pow(value, 0.361), pow(value, 0.133));
   // let color = vec3(pow(value, 12), pow(value, 61), pow(value, 33));
-  let color = hsl_to_rgb(value * 360.0, 0.6, clamp(value * 5.0, 0, 0.5));
-  // let color = viridis(value).rgb;
+  // let color = hsl_to_rgb(value * 360.0, 0.6, clamp(value * 5.0, 0, 0.5));
   return vec4(color, 1);
 }
 

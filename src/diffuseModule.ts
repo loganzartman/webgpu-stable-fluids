@@ -29,7 +29,7 @@ export function diffuseModuleCode({
             textureLoad(readTex, vec2u(id.x + 1, id.y)) +
             textureLoad(readTex, vec2u(id.x, id.y - 1)) +
             textureLoad(readTex, vec2u(id.x, id.y + 1))
-          )) / (1 + 4 * a);
+          )) / (1.0 + 4.0 * a);
         textureStore(writeTex, id.xy, vec4f(value));
       }
     }

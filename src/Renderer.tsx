@@ -713,16 +713,6 @@ export function Renderer({
         label: "Field display encoder",
       });
 
-      // densityRwp.commit();
-
-      // diffuse({
-      //   encoder,
-      //   target: densityRwp,
-      //   diff: 0.001,
-      //   dt,
-      //   iters: 100,
-      // });
-
       if (pointer.down) {
         splat({
           encoder,
@@ -734,33 +724,63 @@ export function Renderer({
           radius: N / 50,
           amount: 1,
         });
+        densityRwp.commit();
+      } else {
+        // TODO: why???
+        densityRwp.swap();
+        velocityRwp.swap();
       }
 
-      densityRwp.commit();
+      // velocity step
+      {
+        // todo swap velocity
+        // todo diffuse velocity
 
-      advect({
-        encoder,
-        target: densityRwp,
-        targetSampler: linearSampler,
-        velocityTex: velocityRwp.readTex,
-        dt,
-      });
+        project({
+          encoder,
+          dt,
+          iters: 50,
+        });
 
-      velocityRwp.commit();
+        velocityRwp.commit();
 
-      advect({
-        encoder,
-        target: velocityRwp,
-        targetSampler: linearSampler,
-        velocityTex: velocityRwp.prevTex,
-        dt,
-      });
+        advect({
+          encoder,
+          dt,
+          target: velocityRwp,
+          targetSampler: linearSampler,
+          velocityTex: velocityRwp.prevTex,
+        });
 
-      project({
-        encoder,
-        iters: 100,
-        dt,
-      });
+        project({
+          encoder,
+          dt,
+          iters: 50,
+        });
+      }
+
+      // density step
+      {
+        densityRwp.commit();
+
+        diffuse({
+          encoder,
+          dt,
+          diff: 0.0005,
+          iters: 20,
+          target: densityRwp,
+        });
+
+        densityRwp.commit();
+
+        advect({
+          encoder,
+          dt,
+          target: densityRwp,
+          targetSampler: linearSampler,
+          velocityTex: velocityRwp.readTex,
+        });
+      }
 
       const renderBindGroup = device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
@@ -790,10 +810,8 @@ export function Renderer({
       advect,
       linearSampler,
       velocityRwp,
-      project,
       renderPipeline,
       diffuseUniformsBuffer,
-      splat,
     ])
   );
 

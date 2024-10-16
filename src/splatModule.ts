@@ -44,7 +44,9 @@ export function splatModuleCode({
         density += f * uniforms.amount;
         velocity += f * uniforms.velocity;
       }
-
+      
+      density *= 0.99;
+      
       textureStore(densityWriteTex, id.xy, vec4(density, 0, 0, 0));
       textureStore(densityPrevTex, id.xy, vec4(density, 0, 0, 0));
       textureStore(velocityWriteTex, id.xy, vec4(velocity, 0, 0));
