@@ -9,7 +9,7 @@ import { ReadWritePrevTex } from "./ReadWritePrevTex";
 import { projectModuleCode } from "./projectModule";
 import { splatModuleCode } from "./splatModule";
 
-const N = 512;
+const N = 1024;
 const workgroupDim = 8;
 
 export function Renderer({
@@ -156,11 +156,27 @@ export function Renderer({
     });
   }, [device]);
 
-  const pressureRwp = useMemo(() => {
+  const pressure1Rwp = useMemo(() => {
     return new ReadWritePrevTex({
       device,
       descriptor: {
-        label: "pressure texture",
+        label: "pressure1 texture",
+        format: "r32float",
+        size: [N + 2, N + 2],
+        usage:
+          GPUTextureUsage.STORAGE_BINDING |
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_SRC |
+          GPUTextureUsage.COPY_DST,
+      },
+    });
+  }, [device]);
+
+  const pressure2Rwp = useMemo(() => {
+    return new ReadWritePrevTex({
+      device,
+      descriptor: {
+        label: "pressure2 texture",
         format: "r32float",
         size: [N + 2, N + 2],
         usage:
@@ -500,10 +516,12 @@ export function Renderer({
       encoder,
       dt,
       iters,
+      pressureTarget,
     }: {
       encoder: GPUCommandEncoder;
       dt: number;
       iters: number;
+      pressureTarget: ReadWritePrevTex;
     }) => {
       projectUniformsBuffer.write({
         N,
@@ -520,8 +538,8 @@ export function Renderer({
           { binding: 2, resource: velocityRwp.writeTex.createView() },
           { binding: 3, resource: divergenceRwp.readTex.createView() },
           { binding: 4, resource: divergenceRwp.writeTex.createView() },
-          { binding: 5, resource: pressureRwp.readTex.createView() },
-          { binding: 6, resource: pressureRwp.writeTex.createView() },
+          { binding: 5, resource: pressureTarget.readTex.createView() },
+          { binding: 6, resource: pressureTarget.writeTex.createView() },
         ],
       });
 
@@ -534,7 +552,7 @@ export function Renderer({
       );
       initPass.end();
       divergenceRwp.flip();
-      pressureRwp.flip();
+      pressureTarget.flip();
 
       // solve
       for (let i = 0; i < iters; ++i) {
@@ -552,8 +570,8 @@ export function Renderer({
             { binding: 2, resource: velocityRwp.writeTex.createView() },
             { binding: 3, resource: divergenceRwp.readTex.createView() },
             { binding: 4, resource: divergenceRwp.writeTex.createView() },
-            { binding: 5, resource: pressureRwp.readTex.createView() },
-            { binding: 6, resource: pressureRwp.writeTex.createView() },
+            { binding: 5, resource: pressureTarget.readTex.createView() },
+            { binding: 6, resource: pressureTarget.writeTex.createView() },
           ],
         });
 
@@ -565,7 +583,7 @@ export function Renderer({
           Math.ceil((N + 2) / workgroupDim)
         );
         pass.end();
-        pressureRwp.flip();
+        pressureTarget.flip();
       }
 
       // apply
@@ -577,8 +595,8 @@ export function Renderer({
           { binding: 2, resource: velocityRwp.writeTex.createView() },
           { binding: 3, resource: divergenceRwp.readTex.createView() },
           { binding: 4, resource: divergenceRwp.writeTex.createView() },
-          { binding: 5, resource: pressureRwp.readTex.createView() },
-          { binding: 6, resource: pressureRwp.writeTex.createView() },
+          { binding: 5, resource: pressureTarget.readTex.createView() },
+          { binding: 6, resource: pressureTarget.writeTex.createView() },
         ],
       });
 
@@ -595,7 +613,6 @@ export function Renderer({
     [
       device,
       divergenceRwp,
-      pressureRwp,
       projectApplyPipeline,
       projectInitPipeline,
       projectSolvePipeline,
@@ -721,7 +738,7 @@ export function Renderer({
           y: pointer.y,
           vx: (pointer.x - pointer.px) * 0.1,
           vy: (pointer.y - pointer.py) * 0.1,
-          radius: N / 50,
+          radius: N / 30,
           amount: 1,
         });
         densityRwp.swap();
@@ -740,6 +757,7 @@ export function Renderer({
           encoder,
           dt,
           iters: 50,
+          pressureTarget: pressure1Rwp,
         });
 
         velocityRwp.swap();
@@ -756,6 +774,7 @@ export function Renderer({
           encoder,
           dt,
           iters: 50,
+          pressureTarget: pressure2Rwp,
         });
       }
 
@@ -766,7 +785,7 @@ export function Renderer({
         diffuse({
           encoder,
           dt,
-          diff: 0.0005,
+          diff: 0,
           iters: 20,
           target: densityRwp,
         });
@@ -805,13 +824,18 @@ export function Renderer({
       renderPassDescriptor,
       context,
       device,
-      densityRwp,
       pointer,
-      advect,
-      linearSampler,
-      velocityRwp,
       renderPipeline,
       diffuseUniformsBuffer,
+      densityRwp,
+      linearSampler,
+      splat,
+      velocityRwp,
+      project,
+      pressure1Rwp,
+      advect,
+      pressure2Rwp,
+      diffuse,
     ])
   );
 

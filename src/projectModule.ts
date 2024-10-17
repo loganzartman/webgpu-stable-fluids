@@ -23,8 +23,6 @@ export function projectModuleCode({
       @builtin(global_invocation_id) id: vec3u,
     ) {
       _ = velWriteTex;
-      _ = divReadTex;
-      _ = presReadTex;
 
       if (!(all(id.xy >= vec2u(1)) && all(id.xy <= vec2u(uniforms.N)))) {
         return;
@@ -32,6 +30,8 @@ export function projectModuleCode({
 
       let h = vec2f(1) / vec2f(f32(uniforms.N));
       
+      let oldDivergence = textureLoad(divReadTex, id.xy, 0).r;
+
       let gx = 
         textureLoad(velReadTex, vec2u(id.x + 1, id.y), 0).x - 
         textureLoad(velReadTex, vec2u(id.x - 1, id.y), 0).x;
@@ -40,8 +40,11 @@ export function projectModuleCode({
         textureLoad(velReadTex, vec2u(id.x, id.y - 1), 0).y;
       let divergence = -0.5 * (h.x * gx + h.y * gy);
       
+      let pressure = textureLoad(presReadTex, id.xy, 0).r;
+      
       textureStore(divWriteTex, id.xy, vec4f(divergence, 0, 0, 0));
-      textureStore(presWriteTex, id.xy, vec4f(0));
+      textureStore(presWriteTex, id.xy, vec4f(pressure * 0.9, 0, 0, 0));
+      // textureStore(presWriteTex, id.xy, vec4f(0));
       
       // TODO: boundary
     }

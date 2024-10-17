@@ -32,7 +32,7 @@ export class ReadWritePrevTex {
   swap() {
     // encoder.copyTextureToTexture(
     //   { texture: this.readTex },
-    //   { texture: this.prevTex },
+    //   { texture: this.writeTex },
     //   [this.readTex.width, this.readTex.height]
     // );
     [this.prevTex, this.writeTex] = [this.writeTex, this.prevTex];

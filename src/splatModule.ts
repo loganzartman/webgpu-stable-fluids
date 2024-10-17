@@ -39,7 +39,8 @@ export function splatModuleCode({
       let dx = vec2f(id.xy) - uniforms.position;
       let dist = length(dx);
       if (dist < uniforms.radius) {
-        let f = 1.0 - dist / uniforms.radius;
+        // let f = 1.0 - dist / uniforms.radius;
+        let f = 1.0;
         
         density += f * uniforms.amount;
         velocity += f * uniforms.velocity;
