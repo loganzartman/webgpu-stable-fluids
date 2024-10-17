@@ -738,7 +738,7 @@ export function Renderer({
           y: pointer.y,
           vx: (pointer.x - pointer.px) * 0.1,
           vy: (pointer.y - pointer.py) * 0.1,
-          radius: N / 30,
+          radius: N / 50,
           amount: 1,
         });
         densityRwp.swap();
@@ -756,7 +756,7 @@ export function Renderer({
         project({
           encoder,
           dt,
-          iters: 50,
+          iters: 100,
           pressureTarget: pressure1Rwp,
         });
 
@@ -773,7 +773,7 @@ export function Renderer({
         project({
           encoder,
           dt,
-          iters: 50,
+          iters: 100,
           pressureTarget: pressure2Rwp,
         });
       }
