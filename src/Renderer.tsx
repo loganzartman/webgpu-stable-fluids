@@ -74,24 +74,6 @@ export function Renderer({
       }
     }
 
-    const canvas = document.createElement("canvas");
-    canvas.width = N;
-    canvas.height = N;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, N, N);
-    ctx.font = "350px Arial";
-    ctx.fillStyle = "white";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("brat", N / 2, N / 2);
-    const img = ctx.getImageData(0, 0, N, N);
-    for (let x = 0; x < N; ++x) {
-      for (let y = 0; y < N; ++y) {
-        data[(y + 1) * (N + 2) + (x + 1)] = img.data[y * N * 4 + x * 4] / 255;
-      }
-    }
-
     return new ReadWritePrevTex({
       device,
       descriptor: {
@@ -129,25 +111,6 @@ export function Renderer({
           data[(y * (N + 2) + x) * 2 + 0] = 1;
           data[(y * (N + 2) + x) * 2 + 1] = 0;
         }
-      }
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = N;
-    canvas.height = N;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, N, N);
-    ctx.font = "350px Arial";
-    ctx.fillStyle = "white";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("brat", N / 2, N / 2);
-    const img = ctx.getImageData(0, 0, N, N);
-    for (let x = 0; x < N; ++x) {
-      for (let y = 0; y < N; ++y) {
-        data[((y + 1) * (N + 2) + (x + 1)) * 2 + 1] =
-          img.data[y * N * 4 + x * 4] / 255;
       }
     }
 
@@ -788,21 +751,11 @@ export function Renderer({
     [context]
   );
 
-  const counter = useRef(0);
+  const lastTimeRef = useRef(performance.now());
   useAnimationFrame(
     useCallback(() => {
-      ++counter.current;
-
-      if (counter.current === 100) {
-        const canvas = context.canvas as HTMLCanvasElement;
-        const dataUrl = canvas.toDataURL("image/png");
-        const a = document.createElement("a");
-        a.href = dataUrl;
-        a.download = "fluid.png";
-        // a.click();
-      }
-
-      const dt = 0.02 * Math.min(1, (counter.current / 1200) ** 3);
+      const dt = (performance.now() - lastTimeRef.current) / 1000;
+      lastTimeRef.current = performance.now();
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -833,15 +786,15 @@ export function Renderer({
         diffuse({
           encoder,
           dt,
-          diff: 0.5,
+          diff: 0,
           target: velocityRwp,
-          iters: 20,
+          iters: 10,
         });
 
         project({
           encoder,
           dt,
-          iters: 100,
+          iters: 50,
           pressureTarget: pressure1Rwp,
         });
 
@@ -858,7 +811,7 @@ export function Renderer({
         project({
           encoder,
           dt,
-          iters: 100,
+          iters: 50,
           pressureTarget: pressure2Rwp,
         });
       }
