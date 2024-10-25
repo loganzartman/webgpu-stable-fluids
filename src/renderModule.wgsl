@@ -44,13 +44,16 @@ struct VertexOutput {
 
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4f {
   _ = uniforms;
-  let fieldRaw = textureSample(fieldTexture, fieldSampler, input.uv).r;
-  var value = max(0, fieldRaw);
+  let fieldRaw = textureSample(fieldTexture, fieldSampler, input.uv).rgb;
+  var value = max(0, fieldRaw.r);
   value /= (value + 1);
   // let color = vec3(pow(value, 1.1), pow(value, 1.7), pow(value, 0.5));
   // let color = vec3(pow(value, 0.512), pow(value, 0.361), pow(value, 0.133));
   // let color = vec3(pow(value, 12), pow(value, 61), pow(value, 33));
-  let color = hsl_to_rgb(value * 360.0, 0.6, clamp(value * 5.0, 0, 0.5));
+  // let color = hsl_to_rgb(value * 360.0, 0.6, clamp(value * 5.0, 0, 0.5));
+  // let color = vec3(abs(fieldRaw));
+  // blood colored on white background
+  let color = select(vec3f(0), vec3f(138/255.0, 206/255.0, 0), value < 0.1);
   return vec4(color, 1);
 }
 

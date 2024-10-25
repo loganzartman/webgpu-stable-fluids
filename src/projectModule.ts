@@ -43,7 +43,7 @@ export function projectModuleCode({
       let pressure = textureLoad(presReadTex, id.xy, 0).r;
       
       textureStore(divWriteTex, id.xy, vec4f(divergence, 0, 0, 0));
-      textureStore(presWriteTex, id.xy, vec4f(pressure * 0.98, 0, 0, 0));
+      textureStore(presWriteTex, id.xy, vec4f(pressure * 0.95, 0, 0, 0));
       // textureStore(presWriteTex, id.xy, vec4f(0));
       
       // TODO: boundary

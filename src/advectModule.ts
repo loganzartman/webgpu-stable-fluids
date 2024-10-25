@@ -23,8 +23,8 @@ export function advectModuleCode({
       @builtin(global_invocation_id) id: vec3u,
     ) {
       if (all(id.xy >= vec2u(1)) && all(id.xy <= vec2u(uniforms.N))) {
-        // advectStam(id);
-        advectMacCormack(id);
+        advectStam(id);
+        // advectMacCormack(id);
       }
     }
 

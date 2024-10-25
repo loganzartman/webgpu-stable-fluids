@@ -18,10 +18,8 @@ export function splatModuleCode({
     @group(0) @binding(0) var<uniform> uniforms: SplatUniforms;
     @group(0) @binding(1) var densityReadTex: texture_2d<f32>;
     @group(0) @binding(2) var densityWriteTex: texture_storage_2d<r32float, write>;
-    @group(0) @binding(3) var densityPrevTex: texture_storage_2d<r32float, write>;
-    @group(0) @binding(4) var velocityReadTex: texture_2d<f32>;
-    @group(0) @binding(5) var velocityWriteTex: texture_storage_2d<rg32float, write>;
-    @group(0) @binding(6) var velocityPrevTex: texture_storage_2d<rg32float, write>;
+    @group(0) @binding(3) var velocityReadTex: texture_2d<f32>;
+    @group(0) @binding(4) var velocityWriteTex: texture_storage_2d<rg32float, write>;
 
     @compute @workgroup_size(${workgroupDim}, ${workgroupDim}) fn splat(
       @builtin(global_invocation_id) id: vec3u,
@@ -49,9 +47,7 @@ export function splatModuleCode({
       density *= 0.99;
       
       textureStore(densityWriteTex, id.xy, vec4(density, 0, 0, 0));
-      textureStore(densityPrevTex, id.xy, vec4(density, 0, 0, 0));
       textureStore(velocityWriteTex, id.xy, vec4(velocity, 0, 0));
-      textureStore(velocityPrevTex, id.xy, vec4(velocity, 0, 0));
     }
   `;
 }

@@ -69,8 +69,26 @@ export function Renderer({
         const dy = y - (N + 2) / 2;
         const dist = Math.hypot(dx, dy);
         if (dist < 20) {
-          data[y * (N + 2) + x] = 1;
+          data[y * (N + 2) + x] = 0;
         }
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = N;
+    canvas.height = N;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, N, N);
+    ctx.font = "350px Arial";
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("brat", N / 2, N / 2);
+    const img = ctx.getImageData(0, 0, N, N);
+    for (let x = 0; x < N; ++x) {
+      for (let y = 0; y < N; ++y) {
+        data[(y + 1) * (N + 2) + (x + 1)] = img.data[y * N * 4 + x * 4] / 255;
       }
     }
 
@@ -111,6 +129,25 @@ export function Renderer({
           data[(y * (N + 2) + x) * 2 + 0] = 1;
           data[(y * (N + 2) + x) * 2 + 1] = 0;
         }
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = N;
+    canvas.height = N;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, N, N);
+    ctx.font = "350px Arial";
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("brat", N / 2, N / 2);
+    const img = ctx.getImageData(0, 0, N, N);
+    for (let x = 0; x < N; ++x) {
+      for (let y = 0; y < N; ++y) {
+        data[((y + 1) * (N + 2) + (x + 1)) * 2 + 1] =
+          img.data[y * N * 4 + x * 4] / 255;
       }
     }
 
@@ -197,11 +234,20 @@ export function Renderer({
     [device]
   );
 
-  const diffuseModule = useMemo(
+  const diffuseRModule = useMemo(
     () =>
       device.createShaderModule({
-        label: "diffuse module",
-        code: diffuseModuleCode({ workgroupDim }),
+        label: "diffuseR module",
+        code: diffuseModuleCode({ workgroupDim, texFormat: "r32float" }),
+      }),
+    [device]
+  );
+
+  const diffuseRGModule = useMemo(
+    () =>
+      device.createShaderModule({
+        label: "diffuseRG module",
+        code: diffuseModuleCode({ workgroupDim, texFormat: "rg32float" }),
       }),
     [device]
   );
@@ -318,17 +364,30 @@ export function Renderer({
     [device]
   );
 
-  const diffuseStepPipeline = useMemo(
+  const diffuseStepRPipeline = useMemo(
     () =>
       device.createComputePipeline({
-        label: "diffuseStep pipeline",
+        label: "diffuseStepR pipeline",
         layout: "auto",
         compute: {
-          module: diffuseModule,
+          module: diffuseRModule,
           entryPoint: "diffuseStep",
         },
       }),
-    [device, diffuseModule]
+    [device, diffuseRModule]
+  );
+
+  const diffuseStepRGPipeline = useMemo(
+    () =>
+      device.createComputePipeline({
+        label: "diffuseStepRG pipeline",
+        layout: "auto",
+        compute: {
+          module: diffuseRGModule,
+          entryPoint: "diffuseStep",
+        },
+      }),
+    [device, diffuseRGModule]
   );
 
   const advectRPipeline = useMemo(
@@ -429,9 +488,21 @@ export function Renderer({
         dt,
       });
 
+      let pipeline;
+      switch (target.readTex.format) {
+        case "r32float":
+          pipeline = diffuseStepRPipeline;
+          break;
+        case "rg32float":
+          pipeline = diffuseStepRGPipeline;
+          break;
+        default:
+          throw new Error("Invalid texture format for diffuse()");
+      }
+
       for (let i = 0; i < iters; ++i) {
         const bindGroup = device.createBindGroup({
-          layout: diffuseStepPipeline.getBindGroupLayout(0),
+          layout: pipeline.getBindGroupLayout(0),
           entries: [
             { binding: 0, resource: diffuseUniformsBuffer },
             { binding: 1, resource: target.readTex.createView() },
@@ -441,7 +512,7 @@ export function Renderer({
         });
 
         const pass = encoder.beginComputePass();
-        pass.setPipeline(diffuseStepPipeline);
+        pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
         pass.dispatchWorkgroups(
           Math.ceil((N + 2) / workgroupDim),
@@ -452,7 +523,7 @@ export function Renderer({
         target.flip();
       }
     },
-    [device, diffuseStepPipeline, diffuseUniformsBuffer]
+    [device, diffuseStepRGPipeline, diffuseStepRPipeline, diffuseUniformsBuffer]
   );
 
   const advect = useCallback(
@@ -656,10 +727,8 @@ export function Renderer({
           { binding: 0, resource: splatUniformsBuffer },
           { binding: 1, resource: densityRwp.readTex.createView() },
           { binding: 2, resource: densityRwp.writeTex.createView() },
-          { binding: 3, resource: densityRwp.prevTex.createView() },
-          { binding: 4, resource: velocityRwp.readTex.createView() },
-          { binding: 5, resource: velocityRwp.writeTex.createView() },
-          { binding: 6, resource: velocityRwp.prevTex.createView() },
+          { binding: 3, resource: velocityRwp.readTex.createView() },
+          { binding: 4, resource: velocityRwp.writeTex.createView() },
         ],
       });
 
@@ -672,8 +741,8 @@ export function Renderer({
       );
       pass.end();
 
-      densityRwp.flip();
-      velocityRwp.flip();
+      // densityRwp.flip();
+      // velocityRwp.flip();
     },
     [densityRwp, device, splatPipeline, splatUniformsBuffer, velocityRwp]
   );
@@ -719,9 +788,21 @@ export function Renderer({
     [context]
   );
 
+  const counter = useRef(0);
   useAnimationFrame(
     useCallback(() => {
-      const dt = 0.01;
+      ++counter.current;
+
+      if (counter.current === 100) {
+        const canvas = context.canvas as HTMLCanvasElement;
+        const dataUrl = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = "fluid.png";
+        // a.click();
+      }
+
+      const dt = 0.02 * Math.min(1, (counter.current / 1200) ** 3);
       renderPassDescriptor.colorAttachments[0].view = context
         .getCurrentTexture()
         .createView();
@@ -741,17 +822,21 @@ export function Renderer({
           radius: N / 50,
           amount: 1,
         });
-        densityRwp.swap();
       } else {
-        // TODO: why???
         densityRwp.flip();
-        velocityRwp.flip();
       }
 
       // velocity step
       {
-        // todo swap velocity
-        // todo diffuse velocity
+        velocityRwp.swap();
+
+        diffuse({
+          encoder,
+          dt,
+          diff: 0.5,
+          target: velocityRwp,
+          iters: 20,
+        });
 
         project({
           encoder,
@@ -785,7 +870,7 @@ export function Renderer({
         diffuse({
           encoder,
           dt,
-          diff: 0,
+          diff: 0.0,
           iters: 20,
           target: densityRwp,
         });
