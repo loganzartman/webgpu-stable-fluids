@@ -41,7 +41,9 @@ export function splatModuleCode({
         // let f = 1.0;
         
         density += f * uniforms.amount;
-        velocity += f * uniforms.velocity;
+        if (length(f * uniforms.velocity) > length(velocity)) {
+          velocity = f * uniforms.velocity;
+        }
       }
       
       density *= 0.99;

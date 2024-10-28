@@ -9,7 +9,7 @@ import { ReadWritePrevTex } from "./ReadWritePrevTex";
 import { projectModuleCode } from "./projectModule";
 import { splatModuleCode } from "./splatModule";
 
-const N = 1024;
+const N = 512;
 const workgroupDim = 8;
 
 export function Renderer({
@@ -770,8 +770,8 @@ export function Renderer({
           dt,
           x: pointer.x,
           y: pointer.y,
-          vx: (pointer.x - pointer.px) * 0.1,
-          vy: (pointer.y - pointer.py) * 0.1,
+          vx: (pointer.x - pointer.px) * 0.2,
+          vy: (pointer.y - pointer.py) * 0.2,
           radius: N / 50,
           amount: 1,
         });
@@ -794,7 +794,7 @@ export function Renderer({
         project({
           encoder,
           dt,
-          iters: 50,
+          iters: 30,
           pressureTarget: pressure1Rwp,
         });
 
@@ -811,7 +811,7 @@ export function Renderer({
         project({
           encoder,
           dt,
-          iters: 50,
+          iters: 30,
           pressureTarget: pressure2Rwp,
         });
       }
@@ -869,11 +869,11 @@ export function Renderer({
       linearSampler,
       splat,
       velocityRwp,
+      diffuse,
       project,
       pressure1Rwp,
       advect,
       pressure2Rwp,
-      diffuse,
     ])
   );
 
