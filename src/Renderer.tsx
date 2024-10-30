@@ -463,17 +463,17 @@ export function Renderer({
           throw new Error("Invalid texture format for diffuse()");
       }
 
-      for (let i = 0; i < iters; ++i) {
-        const bindGroup = device.createBindGroup({
-          layout: pipeline.getBindGroupLayout(0),
-          entries: [
-            { binding: 0, resource: diffuseUniformsBuffer },
-            { binding: 1, resource: target.readTex.createView() },
-            { binding: 2, resource: target.writeTex.createView() },
-            { binding: 3, resource: target.prevTex.createView() },
-          ],
-        });
+      const bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: diffuseUniformsBuffer },
+          { binding: 1, resource: target.readTex.createView() },
+          { binding: 2, resource: target.writeTex.createView() },
+          { binding: 3, resource: target.prevTex.createView() },
+        ],
+      });
 
+      for (let i = 0; i < iters; ++i) {
         const pass = encoder.beginComputePass();
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
@@ -483,7 +483,7 @@ export function Renderer({
         );
         pass.end();
 
-        target.flip();
+        target.flip(encoder);
       }
     },
     [device, diffuseStepRGPipeline, diffuseStepRPipeline, diffuseUniformsBuffer]
@@ -540,7 +540,7 @@ export function Renderer({
       );
       pass.end();
 
-      target.flip();
+      target.flip(encoder);
     },
     [advectRGPipeline, advectRPipeline, advectUniformsBuffer, device]
   );
@@ -563,7 +563,6 @@ export function Renderer({
         i: 0,
       });
 
-      // init
       const initBindGroup = device.createBindGroup({
         layout: projectInitPipeline.getBindGroupLayout(0),
         entries: [
@@ -577,6 +576,7 @@ export function Renderer({
         ],
       });
 
+      // init
       const initPass = encoder.beginComputePass();
       initPass.setPipeline(projectInitPipeline);
       initPass.setBindGroup(0, initBindGroup);
@@ -585,28 +585,28 @@ export function Renderer({
         Math.ceil((N + 2) / workgroupDim)
       );
       initPass.end();
-      divergenceRwp.flip();
-      pressureTarget.flip();
+      divergenceRwp.flip(encoder);
+      pressureTarget.flip(encoder);
 
       // solve
+      const solveBindGroup = device.createBindGroup({
+        layout: projectSolvePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: projectUniformsBuffer },
+          { binding: 1, resource: velocityRwp.readTex.createView() },
+          { binding: 2, resource: velocityRwp.writeTex.createView() },
+          { binding: 3, resource: divergenceRwp.readTex.createView() },
+          { binding: 4, resource: divergenceRwp.writeTex.createView() },
+          { binding: 5, resource: pressureTarget.readTex.createView() },
+          { binding: 6, resource: pressureTarget.writeTex.createView() },
+        ],
+      });
+
       for (let i = 0; i < iters; ++i) {
         projectUniformsBuffer.write({
           N,
           dt,
           i,
-        });
-
-        const solveBindGroup = device.createBindGroup({
-          layout: projectSolvePipeline.getBindGroupLayout(0),
-          entries: [
-            { binding: 0, resource: projectUniformsBuffer },
-            { binding: 1, resource: velocityRwp.readTex.createView() },
-            { binding: 2, resource: velocityRwp.writeTex.createView() },
-            { binding: 3, resource: divergenceRwp.readTex.createView() },
-            { binding: 4, resource: divergenceRwp.writeTex.createView() },
-            { binding: 5, resource: pressureTarget.readTex.createView() },
-            { binding: 6, resource: pressureTarget.writeTex.createView() },
-          ],
         });
 
         const pass = encoder.beginComputePass();
@@ -617,7 +617,7 @@ export function Renderer({
           Math.ceil((N + 2) / workgroupDim)
         );
         pass.end();
-        pressureTarget.flip();
+        pressureTarget.flip(encoder);
       }
 
       // apply
@@ -642,7 +642,7 @@ export function Renderer({
         Math.ceil((N + 2) / workgroupDim)
       );
       applyPass.end();
-      velocityRwp.flip();
+      velocityRwp.flip(encoder);
     },
     [
       device,
@@ -653,6 +653,21 @@ export function Renderer({
       projectUniformsBuffer,
       velocityRwp,
     ]
+  );
+
+  const splatBindGroup = useMemo(
+    () =>
+      device.createBindGroup({
+        layout: splatPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: splatUniformsBuffer },
+          { binding: 1, resource: densityRwp.readTex.createView() },
+          { binding: 2, resource: densityRwp.writeTex.createView() },
+          { binding: 3, resource: velocityRwp.readTex.createView() },
+          { binding: 4, resource: velocityRwp.writeTex.createView() },
+        ],
+      }),
+    [densityRwp, device, splatPipeline, splatUniformsBuffer, velocityRwp]
   );
 
   const splat = useCallback(
@@ -684,30 +699,19 @@ export function Renderer({
         amount,
       });
 
-      const bindGroup = device.createBindGroup({
-        layout: splatPipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: splatUniformsBuffer },
-          { binding: 1, resource: densityRwp.readTex.createView() },
-          { binding: 2, resource: densityRwp.writeTex.createView() },
-          { binding: 3, resource: velocityRwp.readTex.createView() },
-          { binding: 4, resource: velocityRwp.writeTex.createView() },
-        ],
-      });
-
       const pass = encoder.beginComputePass();
       pass.setPipeline(splatPipeline);
-      pass.setBindGroup(0, bindGroup);
+      pass.setBindGroup(0, splatBindGroup);
       pass.dispatchWorkgroups(
         Math.ceil((N + 2) / workgroupDim),
         Math.ceil((N + 2) / workgroupDim)
       );
       pass.end();
 
-      // densityRwp.flip();
-      // velocityRwp.flip();
+      // densityRwp.flip(encoder);
+      // velocityRwp.flip(encoder);
     },
-    [densityRwp, device, splatPipeline, splatUniformsBuffer, velocityRwp]
+    [splatBindGroup, splatPipeline, splatUniformsBuffer]
   );
 
   const renderModule = useMemo(
@@ -751,6 +755,19 @@ export function Renderer({
     [context]
   );
 
+  const renderBindGroup = useMemo(
+    () =>
+      device.createBindGroup({
+        layout: renderPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: diffuseUniformsBuffer },
+          { binding: 1, resource: densityRwp.readTex.createView() },
+          { binding: 2, resource: linearSampler },
+        ],
+      }),
+    [densityRwp, device, diffuseUniformsBuffer, linearSampler, renderPipeline]
+  );
+
   const lastTimeRef = useRef(performance.now());
   useAnimationFrame(
     useCallback(() => {
@@ -776,12 +793,12 @@ export function Renderer({
           amount: 1,
         });
       } else {
-        densityRwp.flip();
+        densityRwp.flip(encoder);
       }
 
       // velocity step
       {
-        velocityRwp.swap();
+        velocityRwp.swap(encoder);
 
         diffuse({
           encoder,
@@ -798,7 +815,7 @@ export function Renderer({
           pressureTarget: pressure1Rwp,
         });
 
-        velocityRwp.swap();
+        velocityRwp.swap(encoder);
 
         advect({
           encoder,
@@ -818,7 +835,7 @@ export function Renderer({
 
       // density step
       {
-        densityRwp.swap();
+        densityRwp.swap(encoder);
 
         diffuse({
           encoder,
@@ -828,7 +845,7 @@ export function Renderer({
           target: densityRwp,
         });
 
-        densityRwp.swap();
+        densityRwp.swap(encoder);
 
         advect({
           encoder,
@@ -838,15 +855,6 @@ export function Renderer({
           velocityTex: velocityRwp.readTex,
         });
       }
-
-      const renderBindGroup = device.createBindGroup({
-        layout: renderPipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: diffuseUniformsBuffer },
-          { binding: 1, resource: densityRwp.readTex.createView() },
-          { binding: 2, resource: linearSampler },
-        ],
-      });
 
       const renderPass = encoder.beginRenderPass(renderPassDescriptor);
       renderPass.setPipeline(renderPipeline);

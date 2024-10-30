@@ -25,16 +25,19 @@ export class ReadWritePrevTex {
     this.prevTex = textures[2];
   }
 
-  flip() {
-    [this.readTex, this.writeTex] = [this.writeTex, this.readTex];
+  flip(encoder: GPUCommandEncoder) {
+    encoder.copyTextureToTexture(
+      { texture: this.writeTex },
+      { texture: this.readTex },
+      [this.readTex.width, this.readTex.height]
+    );
   }
 
-  swap() {
-    // encoder.copyTextureToTexture(
-    //   { texture: this.readTex },
-    //   { texture: this.writeTex },
-    //   [this.readTex.width, this.readTex.height]
-    // );
-    [this.prevTex, this.writeTex] = [this.writeTex, this.prevTex];
+  swap(encoder: GPUCommandEncoder) {
+    encoder.copyTextureToTexture(
+      { texture: this.writeTex },
+      { texture: this.prevTex },
+      [this.readTex.width, this.readTex.height]
+    );
   }
 }
